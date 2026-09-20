@@ -1,0 +1,29 @@
+{
+  "name": "find-images-mcp-bridge",
+  "version": "0.1.1 (Revision 1)",
+  "description": "Local stdio MCP bridge between Bionic and a Find Images MCP server.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "start": "tsc && node --enable-source-maps dist/index.js",
+    "build": "node scripts/sync-core.mjs && tsc && cp src/core-bundle.mjs dist/core-bundle.mjs",
+    "sync-core": "node scripts/sync-core.mjs",
+    "test": "npm run build && node --test dist/bridgeService.test.js"
+  },
+  "author": "Ceveyne",
+  "license": "MIT",
+  "dependencies": {
+    "made-for-bionic-core": "file:../made-for-bionic-core",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/core": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "undici": "^6.28.1"
+  },
+  "gitHead": "d95ce2feb067b4eec446c673155631ee1734e982",
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "typescript": "^5.7.2"
+  }
+}

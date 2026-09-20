@@ -1,0 +1,7 @@
+{
+  "type": "plugin",
+  "runner": "node",
+  "owner": "ceveyne",
+  "name": "find-images-mcp-bridge",
+  "revision": 1
+}
