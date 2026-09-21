@@ -134,16 +134,19 @@ async function resolveScratchpadFolder(baseDirectory, requestedFolder, logger) {
   });
   if (!requestedFolder.trim()) {
     const error = new ScratchpadFolderError("scratchpadFolder must not be empty.");
+    error.requestedFolder = requestedFolder;
     await logger?.logError("Scratchpad validation failed", error);
     throw error;
   }
   if (!path3.isAbsolute(requestedFolder) && requestedFolder !== path3.basename(requestedFolder)) {
     const error = new ScratchpadFolderError("A relative scratchpadFolder must be one session folder name.");
+    error.requestedFolder = requestedFolder;
     await logger?.logError("Scratchpad validation failed", error);
     throw error;
   }
   if (relative === "" || relative === ".." || relative.startsWith(`..${path3.sep}`) || path3.isAbsolute(relative)) {
     const error = new ScratchpadFolderError("scratchpadFolder must resolve to a child of the configured scratchpad directory.");
+    error.requestedFolder = requestedFolder;
     await logger?.logError("Scratchpad validation failed", error);
     throw error;
   }
@@ -152,6 +155,7 @@ async function resolveScratchpadFolder(baseDirectory, requestedFolder, logger) {
     await logger?.logEvent("Scratchpad stat", { path: scratchpadPath, isDirectory: stats.isDirectory() });
     if (!stats.isDirectory()) {
       const error = new ScratchpadFolderError(`The scratchpad folder was not found: ${requestedFolder}`);
+      error.requestedFolder = requestedFolder;
       await logger?.logError("Scratchpad validation failed", error);
       throw error;
     }
@@ -160,6 +164,7 @@ async function resolveScratchpadFolder(baseDirectory, requestedFolder, logger) {
     await logger?.logError("Scratchpad stat failed", error, { path: scratchpadPath });
     if (error.code === "ENOENT") {
       const folderError = new ScratchpadFolderError(`The scratchpad folder was not found: ${requestedFolder}`);
+      folderError.requestedFolder = requestedFolder;
       await logger?.logError("Scratchpad validation failed", folderError);
       throw folderError;
     }
@@ -208,6 +213,11 @@ function startStdioMcpServer(options) {
     return server;
   });
 }
+
+// src/previewPolicy.ts
+function resolveBridgePreviewPolicy(previewInChat) {
+  return previewInChat ? { includeBase64Preview: true, writeHtmlReportForMultipleResults: false, scratchpadFolderRequired: false } : { includeBase64Preview: false, writeHtmlReportForMultipleResults: true, scratchpadFolderRequired: true };
+}
 export {
   ScratchpadFolderError,
   bridgeToolErrorResult,
@@ -221,6 +231,7 @@ export {
   recordForNotation,
   renderReportShell,
   requiredEnv,
+  resolveBridgePreviewPolicy,
   resolveScratchpadFolder,
   scratchpadFolderNotFoundResult,
   startStdioMcpServer,
