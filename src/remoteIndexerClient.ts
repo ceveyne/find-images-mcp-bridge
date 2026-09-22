@@ -29,26 +29,32 @@ export class RemoteIndexerClient {
   }
 
   async callTool(name: "find_image" | "tag_image", args: Record<string, unknown>): Promise<unknown> {
-    try {
-      return await this.callToolOnce(name, args);
-    } catch (error) {
-      await logBridgeError("remote-tool-call-failed", error, { tool: name, endpoint: this.config.indexerUrl.origin });
-      if (isConnectionRefused(error)) {
-        await logBridgeEvent("remote-indexer-unavailable", { tool: name, endpoint: this.config.indexerUrl.origin });
-        const started = await this.launcher.ensureRunning();
-        if (!started) throw error;
-        return this.callToolOnce(name, args);
-      }
-      if (isTransientSocketError(error)) {
-        await logBridgeEvent("remote-tool-call-retrying", { tool: name, endpoint: this.config.indexerUrl.origin });
-        return this.callToolOnce(name, args);
-      }
-      throw error;
-    }
+    return this.withIndexerRetry(name, () => this.callToolOnce(name, args));
   }
 
   stopStartedIndexer(): void {
     this.launcher.stop();
+  }
+
+  // Shared by callTool and uploadImage so an upload made before the search (target resolution)
+  // also relaunches the headless indexer instead of failing immediately on ECONNREFUSED.
+  private async withIndexerRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      await logBridgeError("remote-tool-call-failed", error, { tool: label, endpoint: this.config.indexerUrl.origin });
+      if (isConnectionRefused(error)) {
+        await logBridgeEvent("remote-indexer-unavailable", { tool: label, endpoint: this.config.indexerUrl.origin });
+        const started = await this.launcher.ensureRunning();
+        if (!started) throw error;
+        return operation();
+      }
+      if (isTransientSocketError(error)) {
+        await logBridgeEvent("remote-tool-call-retrying", { tool: label, endpoint: this.config.indexerUrl.origin });
+        return operation();
+      }
+      throw error;
+    }
   }
 
   private async callToolOnce(name: "find_image" | "tag_image", args: Record<string, unknown>): Promise<unknown> {
@@ -69,6 +75,10 @@ export class RemoteIndexerClient {
   }
 
   async uploadImage(imagePath: string): Promise<string> {
+    return this.withIndexerRetry("upload_image", () => this.uploadImageOnce(imagePath));
+  }
+
+  private async uploadImageOnce(imagePath: string): Promise<string> {
     await logBridgeEvent("image-upload-started", { endpoint: this.config.indexerUrl.origin, filename: path.basename(imagePath) });
     const bytes = await fs.readFile(imagePath);
     const response = await this.fetch(new URL("/uploads", this.config.indexerUrl), {
