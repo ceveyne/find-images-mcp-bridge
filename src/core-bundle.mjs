@@ -215,10 +215,20 @@ function startStdioMcpServer(options) {
 }
 
 // src/previewPolicy.ts
-function resolveBridgePreviewPolicy(previewInChat) {
-  return previewInChat ? { includeBase64Preview: true, writeHtmlReportForMultipleResults: false, scratchpadFolderRequired: false } : { includeBase64Preview: false, writeHtmlReportForMultipleResults: true, scratchpadFolderRequired: true };
+function resolveBridgePreviewPolicy(madeForBionic) {
+  return madeForBionic ? { includeBase64Preview: false, writeHtmlReportForMultipleResults: true, scratchpadFolderRequired: true } : { includeBase64Preview: true, writeHtmlReportForMultipleResults: false, scratchpadFolderRequired: false };
+}
+var MADE_FOR_BIONIC_ENV_VAR = "MCP_MADE_FOR_BIONIC";
+function parseMadeForBionicEnv(rawValue) {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) return true;
+  return /^(1|true|yes)$/i.test(trimmed);
+}
+function resolveBridgePreviewPolicyFromEnv(rawMadeForBionic) {
+  return resolveBridgePreviewPolicy(parseMadeForBionicEnv(rawMadeForBionic));
 }
 export {
+  MADE_FOR_BIONIC_ENV_VAR,
   ScratchpadFolderError,
   bridgeToolErrorResult,
   createBridgeLogger,
@@ -227,11 +237,13 @@ export {
   mediaStatePath,
   nextCounter,
   optionalEnv,
+  parseMadeForBionicEnv,
   readMediaState,
   recordForNotation,
   renderReportShell,
   requiredEnv,
   resolveBridgePreviewPolicy,
+  resolveBridgePreviewPolicyFromEnv,
   resolveScratchpadFolder,
   scratchpadFolderNotFoundResult,
   startStdioMcpServer,
