@@ -208,7 +208,7 @@ function startStdioMcpServer(options) {
     process.once("SIGTERM", options.onShutdown);
   }
   serveStdio(() => {
-    const server = new McpServer({ name: options.name, version: options.version });
+    const server = new McpServer({ name: options.name, version: options.version }, { capabilities: { resources: {}, prompts: {} } });
     options.buildServer(server);
     return server;
   });
@@ -227,13 +227,213 @@ function parseMadeForBionicEnv(rawValue) {
 function resolveBridgePreviewPolicyFromEnv(rawMadeForBionic) {
   return resolveBridgePreviewPolicy(parseMadeForBionicEnv(rawMadeForBionic));
 }
+
+// src/mediaMaterializer.ts
+import fs4 from "node:fs/promises";
+import path4 from "node:path";
+async function fileExists(absolutePath) {
+  try {
+    await fs4.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function snapshotImageIndices(scratchpadPath) {
+  const state = await readMediaState(scratchpadPath);
+  const indices = state.images.map((record) => record.i).filter((i) => typeof i === "number");
+  return new Set(indices);
+}
+async function materializeNewImages(scratchpadPath, before) {
+  const state = await readMediaState(scratchpadPath);
+  const newRecords = state.images.filter((record) => typeof record.i === "number" && !before.has(record.i));
+  const results = [];
+  for (const record of newRecords) {
+    const index = record.i;
+    const filename = record.filename ?? "";
+    const absolutePath = path4.join(scratchpadPath, filename);
+    const videoFilename = filename.replace(/\.(png|jpe?g|webp)$/i, ".mov");
+    const isVideo = videoFilename !== filename && await fileExists(path4.join(scratchpadPath, videoFilename));
+    results.push({
+      index,
+      notation: `i${index}`,
+      filename,
+      absolutePath,
+      previewFilename: record.preview,
+      isVideo,
+      videoFilename: isVideo ? videoFilename : void 0
+    });
+  }
+  return results.sort((a, b) => a.index - b.index);
+}
+function extractSummaryText(result) {
+  const content = result?.content;
+  if (!Array.isArray(content) || content.length === 0) return void 0;
+  const lastItem = content[content.length - 1];
+  return lastItem?.type === "text" && typeof lastItem.text === "string" ? lastItem.text : void 0;
+}
+function extractSummary(result) {
+  const text = extractSummaryText(result);
+  if (text === void 0) return void 0;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+
+// src/presets/bionic.ts
+import path5 from "node:path";
+import { pathToFileURL } from "node:url";
+var bionicPreset = {
+  name: "bionic",
+  includeBase64Preview: false,
+  writeHtmlReportForMultipleResults: true,
+  scratchpadFolderRequired: true
+};
+function presentImageGuidance(tier, displayPath, notation) {
+  const attachInstruction = `call \`attach_file(path="${displayPath}")\`, then write its Markdown link directly in the chat. Example: ![${notation}](bionic-attached://2eb90efa.png?w=1024&h=768).`;
+  if (tier === "process") {
+    return `This is an intermediate/working result, not a final one. Only attach this file to the chat if it becomes vote-relevant on its own (e.g. the user should confirm this selection) \u2014 if so, first ${attachInstruction}`;
+  }
+  return `If you choose to comment on how well the result matches your prompt, present the image to the user in the chat as a reference.
+
+To show an image to the user, first ${attachInstruction}`;
+}
+function buildMultiResultText(toolLabel, tier, reportPath, results) {
+  const reportFileName = path5.basename(reportPath);
+  const notations = results.map((r) => r.notation).join(", ");
+  const viewPaths = results.map((r) => r.absolutePath);
+  const viewPayload = JSON.stringify({ paths: viewPaths, quality: "medium" }, null, 2);
+  const openPayload = JSON.stringify({ opened: true, url: pathToFileURL(reportPath).href }, null, 2);
+  const primaryNotation = results[0]?.notation ?? "";
+  return `${toolLabel} produced ${results.length} file(s): ${notations}. ${reportFileName} provides an overview. Immediately call "open_url_in_app_browser" with the JSON below. Do not call any other tool and do not write a user-facing response before this call completes.
+
+${openPayload}
+
+After the HTML report is open, use "view_images" to inspect the result(s) yourself. This tool does not display images to the user:
+
+${viewPayload}
+
+${presentImageGuidance(tier, viewPaths[0] ?? "", primaryNotation)}
+
+Refer to this result in a subsequent ${toolLabel} call as its \`${primaryNotation}\` canvas/moodboard identifier.
+
+All metadata for the generated file(s) is available in ${reportFileName}.`;
+}
+function buildSingleResultText(toolLabel, tier, result, summary) {
+  const viewPayload = JSON.stringify({ paths: [result.absolutePath], quality: "medium" }, null, 2);
+  const openPayload = JSON.stringify({ opened: true, url: pathToFileURL(result.absolutePath).href }, null, 2);
+  return `${toolLabel} produced 1 file: ${result.notation}. Immediately call "open_url_in_app_browser" with the JSON below to show the preview to the user. Do not call any other tool and do not write a user-facing response before this call completes.
+
+${openPayload}
+
+After the preview is open, use "view_images" to inspect the result yourself. This tool does not display images to the user:
+
+${viewPayload}
+
+${presentImageGuidance(tier, result.absolutePath, result.notation)}
+
+Refer to this result in a subsequent ${toolLabel} call as its \`${result.notation}\` canvas/moodboard identifier.
+
+Metadata for the generated file (from the tool call):
+
+${JSON.stringify(summary ?? {})}`;
+}
+
+// src/presets/generic.ts
+import fs5 from "node:fs/promises";
+import path6 from "node:path";
+var genericPreset = {
+  name: "generic",
+  includeBase64Preview: true,
+  writeHtmlReportForMultipleResults: false,
+  scratchpadFolderRequired: false
+};
+async function buildGenericResultContent(toolLabel, tier, scratchpadPath, results, summaryText, originalLinksFor) {
+  const content = [];
+  for (const result of results) {
+    if (!result.previewFilename) continue;
+    try {
+      const data = await fs5.readFile(path6.join(scratchpadPath, result.previewFilename));
+      content.push({ type: "image", fileName: result.previewFilename, mimeType: "image/jpeg", data: data.toString("base64") });
+    } catch {
+    }
+  }
+  for (const result of results) {
+    for (const link of originalLinksFor(result)) {
+      content.push({ type: "text", text: link });
+    }
+  }
+  if (summaryText) {
+    content.push({ type: "text", text: summaryText });
+  }
+  const notations = results.map((r) => r.notation).join(", ");
+  const primaryNotation = results[0]?.notation ?? "";
+  const pronoun = results.length > 1 ? "them" : "it";
+  const kind = tier === "final" ? "final result" : "intermediate/working";
+  content.push({
+    type: "text",
+    text: `${toolLabel} produced ${results.length} ${kind} file(s): ${notations}. Use an appopriate method to show the image(s) ${pronoun} to the user.
+
+Refer to this result in a subsequent ${toolLabel} call as its \`${primaryNotation}\` canvas/moodboard identifier.`
+  });
+  return { content };
+}
+
+// src/presets/index.ts
+var MADE_FOR_ENV_VAR = "MCP_MADE_FOR";
+var PRESETS = {
+  bionic: bionicPreset,
+  generic: genericPreset
+};
+function resolvePreset(name) {
+  const trimmed = name?.trim().toLowerCase();
+  return trimmed && PRESETS[trimmed] || bionicPreset;
+}
+function resolveMadeForEnv(madeForRaw, madeForBionicRaw) {
+  const trimmed = madeForRaw?.trim();
+  if (trimmed) return resolvePreset(trimmed);
+  if (madeForBionicRaw !== void 0) return parseMadeForBionicEnv(madeForBionicRaw) ? bionicPreset : genericPreset;
+  return bionicPreset;
+}
+
+// src/sourceTargetResolution.ts
+import fs6 from "node:fs/promises";
+import path7 from "node:path";
+async function resolveMcpSourcePathTarget(raw, scratchpadPath) {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return null;
+  const looksLikePath = path7.isAbsolute(trimmed) || trimmed === path7.basename(trimmed);
+  if (!looksLikePath) return null;
+  const resolvedBase = path7.resolve(scratchpadPath);
+  const candidate = path7.isAbsolute(trimmed) ? trimmed : path7.join(resolvedBase, trimmed);
+  const resolvedCandidate = path7.resolve(candidate);
+  const relative = path7.relative(resolvedBase, resolvedCandidate);
+  if (relative === ".." || relative.startsWith(`..${path7.sep}`) || path7.isAbsolute(relative)) {
+    throw new Error(`Source "${trimmed}" is outside the bound scratchpad directory (${resolvedBase}).`);
+  }
+  const exists = await fs6.stat(resolvedCandidate).then((s) => s.isFile()).catch(() => false);
+  if (!exists) throw new Error(`Source file not found: ${resolvedCandidate}`);
+  return resolvedCandidate;
+}
 export {
   MADE_FOR_BIONIC_ENV_VAR,
+  MADE_FOR_ENV_VAR,
   ScratchpadFolderError,
+  bionicPreset,
   bridgeToolErrorResult,
+  buildGenericResultContent,
+  buildMultiResultText,
+  buildSingleResultText,
   createBridgeLogger,
   ensureMediaState,
   escapeHtml,
+  extractSummary,
+  extractSummaryText,
+  genericPreset,
+  materializeNewImages,
   mediaStatePath,
   nextCounter,
   optionalEnv,
@@ -244,8 +444,12 @@ export {
   requiredEnv,
   resolveBridgePreviewPolicy,
   resolveBridgePreviewPolicyFromEnv,
+  resolveMadeForEnv,
+  resolveMcpSourcePathTarget,
+  resolvePreset,
   resolveScratchpadFolder,
   scratchpadFolderNotFoundResult,
+  snapshotImageIndices,
   startStdioMcpServer,
   writeMediaState
 };
