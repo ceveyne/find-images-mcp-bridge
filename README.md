@@ -46,7 +46,7 @@ The stdio definition requires these values:
 2. Run the guided Onboarding and verify you're set up according to the [Find Images.app README](https://github.com/ceveyne/find-images-releases).
 3. Enter Find Images General Settings and add a bearer token to the "MCP Server Bearer Token" field. This is required to get the MCP server started.
 4. `cd ~/.lmstudio/extensions/plugins/ceveyne && git clone https://github.com/ceveyne/find-images-mcp-bridge`
-5. `cd ~/.lmstudio/extensions/plugins/ceveyne/find-images-mcp-bridge && npm run build`
+5. `cd ~/.lmstudio/extensions/plugins/ceveyne/find-images-mcp-bridge && npm install && npm run build`
 6. Start Bionic > Settings > MCP > Add custom MCP. Configuration:
 
 - Name: find-images
@@ -68,6 +68,7 @@ To generate images, use the [LM Studio plugin – made for Bionic: **generate-im
 ## Development
 
 ```bash
+npm install
 npm run build
 npm test
 ```

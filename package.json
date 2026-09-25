@@ -1,6 +1,6 @@
 {
   "name": "find-images-mcp-bridge",
-  "version": "0.1.1 (Revision 1)",
+  "version": "0.1.2 (Revision 2)",
   "description": "Local stdio MCP bridge between Bionic and a Find Images MCP server.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
