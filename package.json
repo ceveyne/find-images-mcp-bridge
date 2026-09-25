@@ -7,14 +7,13 @@
   "type": "module",
   "scripts": {
     "start": "tsc && node --enable-source-maps dist/index.js",
-    "build": "node scripts/sync-core.mjs && tsc && cp src/core-bundle.mjs dist/core-bundle.mjs",
+    "build": "tsc && cp src/core-bundle.mjs dist/core-bundle.mjs",
     "sync-core": "node scripts/sync-core.mjs",
     "test": "npm run build && node --test dist/bridgeService.test.js"
   },
   "author": "Ceveyne",
   "license": "MIT",
   "dependencies": {
-    "made-for-bionic-core": "file:../made-for-bionic-core",
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",
     "@modelcontextprotocol/node": "2.0.0",
