@@ -104,7 +104,7 @@ export async function materializeSearchResult(
 
 export function findImageToolResult(totalFound: number, materialized: { queryId: string; ranks: number[]; reportPath: string }): string {
   const scratchpadPath = path.dirname(materialized.reportPath);
-  const previewPaths = materialized.ranks.slice(0, 2).map((rank) => path.join(scratchpadPath, `preview-${materialized.queryId}-${rank}.jpg`));
+  const previewPaths = materialized.ranks.map((rank) => path.join(scratchpadPath, `preview-${materialized.queryId}-${rank}.jpg`));
   const viewPayload = JSON.stringify({ paths: previewPaths, quality: "medium" }, null, 2);
   return `The search returned ${totalFound} results. ${materialized.queryId}.html provides an overview of the results. Immediately call "open_url_in_app_browser" with the JSON below. Do not call any other tool and do not write a user-facing response before this call completes.\n\n${JSON.stringify({ opened: true, url: pathToFileURL(materialized.reportPath).href }, null, 2)}\n\nAfter the HTML report is open, use "view_images" to inspect the best matches yourself. This tool does not display images to the user:\n\n${viewPayload}\n\nThen present the best results to the user in the chat. To show a selected image to the user, first call \`attach_file(path="${path.join(scratchpadPath, `preview-${materialized.queryId}-N.jpg`)}")\`, then write its Markdown link directly in the chat. Example: ![preview-${materialized.queryId}-N.jpg](bionic-attached://2eb90efa.jpg?w=1024&h=768). Refer to a result in a subsequent find_image or tag_image target as its displayed \`pN\` identifier.\n\nTo improve the search, refine the query text or provide any reference image.\n\nAll metadata for the found images is available in ${materialized.queryId}.html.`;
 }
