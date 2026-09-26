@@ -38,22 +38,32 @@ export class RemoteIndexerClient {
 
   // Shared by callTool and uploadImage so an upload made before the search (target resolution)
   // also relaunches the headless indexer instead of failing immediately on ECONNREFUSED.
+  //
+  // A loop, not nested calls: a transient-error retry that itself hits ECONNREFUSED (the
+  // headless process actually died, not just a hiccup) must still be able to trigger a
+  // relaunch instead of propagating raw past this classification.
   private async withIndexerRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      await logBridgeError("remote-tool-call-failed", error, { tool: label, endpoint: this.config.indexerUrl.origin });
-      if (isConnectionRefused(error)) {
-        await logBridgeEvent("remote-indexer-unavailable", { tool: label, endpoint: this.config.indexerUrl.origin });
-        const started = await this.launcher.ensureRunning();
-        if (!started) throw error;
-        return operation();
+    let hasRelaunched = false;
+    let hasRetriedTransient = false;
+    for (;;) {
+      try {
+        return await operation();
+      } catch (error) {
+        await logBridgeError("remote-tool-call-failed", error, { tool: label, endpoint: this.config.indexerUrl.origin });
+        if (isConnectionRefused(error) && !hasRelaunched) {
+          hasRelaunched = true;
+          await logBridgeEvent("remote-indexer-unavailable", { tool: label, endpoint: this.config.indexerUrl.origin });
+          const started = await this.launcher.ensureRunning();
+          if (!started) throw error;
+          continue;
+        }
+        if (isTransientSocketError(error) && !hasRetriedTransient) {
+          hasRetriedTransient = true;
+          await logBridgeEvent("remote-tool-call-retrying", { tool: label, endpoint: this.config.indexerUrl.origin });
+          continue;
+        }
+        throw error;
       }
-      if (isTransientSocketError(error)) {
-        await logBridgeEvent("remote-tool-call-retrying", { tool: label, endpoint: this.config.indexerUrl.origin });
-        return operation();
-      }
-      throw error;
     }
   }
 

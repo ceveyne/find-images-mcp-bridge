@@ -66,6 +66,7 @@ async function main(): Promise<void> {
 				}
 				const result = await indexer.callTool("find_image", remoteArgs) as SearchResult;
 				await appendImageServerResponse(result);
+				if (typeof result.error === "string") throw new Error(result.error);
 				const totalFound = typeof result.totalFound === "number" ? result.totalFound : Array.isArray(result.images) ? result.images.length : 0;
 				if (totalFound === 0) return { content: [{ type: "text", text: "The search returned 0 results." }] };
 				const materialized = await materializeSearchResult(result, scratchpadPath, indexer);

@@ -15,6 +15,7 @@ type SearchImage = Record<string, unknown> & {
 export type SearchResult = {
   totalFound?: unknown;
   images?: unknown;
+  error?: unknown;
 };
 
 const IMAGE_SERVER_ERROR_LOG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "logs", "find-image-image-server-response-errors.log");
@@ -167,9 +168,22 @@ function queryIdFromPreviewUrl(previewUrl: string): string {
 }
 
 export async function appendImageServerResponse(result: SearchResult): Promise<void> {
-  const entry = `[${new Date().toISOString()}] Image Server response:\n${JSON.stringify(result, null, 2)}\n\n`;
+  const entry = `[${formatLocalTimestamp(new Date())}] Image Server response:\n${JSON.stringify(result, null, 2)}\n\n`;
   await fs.mkdir(path.dirname(IMAGE_SERVER_ERROR_LOG_PATH), { recursive: true });
   await fs.appendFile(IMAGE_SERVER_ERROR_LOG_PATH, entry, "utf8");
+}
+
+// Local system time, not UTC - matches core-bundle.mjs's bridge event log format.
+function formatLocalTimestamp(date: Date): string {
+  const pad = (value: number, width = 2): string => String(value).padStart(width, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const milliseconds = pad(date.getMilliseconds(), 3);
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
 function buildHtmlReport(queryId: string, images: SearchImage[], pictureNumbersByRank: ReadonlyMap<number, number>): string {

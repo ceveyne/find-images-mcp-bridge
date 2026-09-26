@@ -318,7 +318,7 @@ ${viewPayload}
 
 ${presentImageGuidance(tier, viewPaths[0] ?? "", primaryNotation)}
 
-Refer to this result in a subsequent ${toolLabel} call as its \`${primaryNotation}\` canvas/moodboard identifier.
+Refer to this result as its \`${primaryNotation}\` canvas/moodboard identifier in any subsequent tool call that accepts an image reference \u2014 e.g. generate_image, zoom-in, or mask.
 
 All metadata for the generated file(s) is available in ${reportFileName}.`;
 }
@@ -335,7 +335,7 @@ ${viewPayload}
 
 ${presentImageGuidance(tier, result.absolutePath, result.notation)}
 
-Refer to this result in a subsequent ${toolLabel} call as its \`${result.notation}\` canvas/moodboard identifier.
+Refer to this result as its \`${result.notation}\` canvas/moodboard identifier in any subsequent tool call that accepts an image reference \u2014 e.g. generate_image, zoom-in, or mask.
 
 Metadata for the generated file (from the tool call):
 
@@ -377,7 +377,7 @@ async function buildGenericResultContent(toolLabel, tier, scratchpadPath, result
     type: "text",
     text: `${toolLabel} produced ${results.length} ${kind} file(s): ${notations}. Use an appopriate method to show the image(s) ${pronoun} to the user.
 
-Refer to this result in a subsequent ${toolLabel} call as its \`${primaryNotation}\` canvas/moodboard identifier.`
+Refer to this result as its \`${primaryNotation}\` canvas/moodboard identifier in any subsequent tool call that accepts an image reference \u2014 e.g. generate_image, zoom-in, or mask.`
   });
   return { content };
 }
@@ -402,12 +402,39 @@ function resolveMadeForEnv(madeForRaw, madeForBionicRaw) {
 // src/sourceTargetResolution.ts
 import fs6 from "node:fs/promises";
 import path7 from "node:path";
-async function resolveMcpSourcePathTarget(raw, scratchpadPath) {
+function looksLikeSourceNotation(raw) {
+  const trimmed = String(raw ?? "").trim().toLowerCase();
+  const normalized = /^[avpi]$/.test(trimmed) ? `${trimmed}1` : trimmed;
+  return /^[avpi][1-9]\d*$/.test(normalized);
+}
+function normalizeSourceFieldToArray(raw) {
+  if (Array.isArray(raw)) return raw.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0);
+  if (typeof raw !== "string") return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/[\s,]+/).filter((v) => v.length > 0);
+}
+async function resolveMcpSourceToken(raw, scratchpadPath) {
   const trimmed = String(raw ?? "").trim();
   if (!trimmed) return null;
   const looksLikePath = path7.isAbsolute(trimmed) || trimmed === path7.basename(trimmed);
   if (!looksLikePath) return null;
   const resolvedBase = path7.resolve(scratchpadPath);
+  const previewBasename = path7.basename(trimmed);
+  const state = await readMediaState(scratchpadPath).catch(() => null);
+  if (state) {
+    const pools = [
+      [state.attachments, "a"],
+      [state.variants, "v"],
+      [state.pictures, "p"],
+      [state.images, "i"]
+    ];
+    for (const [pool, kind] of pools) {
+      const record = pool.find((r) => typeof r.preview === "string" && path7.basename(r.preview) === previewBasename);
+      const index = record?.[kind];
+      if (typeof index === "number") return `${kind}${index}`;
+    }
+  }
   const candidate = path7.isAbsolute(trimmed) ? trimmed : path7.join(resolvedBase, trimmed);
   const resolvedCandidate = path7.resolve(candidate);
   const relative = path7.relative(resolvedBase, resolvedCandidate);
@@ -433,9 +460,11 @@ export {
   extractSummary,
   extractSummaryText,
   genericPreset,
+  looksLikeSourceNotation,
   materializeNewImages,
   mediaStatePath,
   nextCounter,
+  normalizeSourceFieldToArray,
   optionalEnv,
   parseMadeForBionicEnv,
   readMediaState,
@@ -445,7 +474,7 @@ export {
   resolveBridgePreviewPolicy,
   resolveBridgePreviewPolicyFromEnv,
   resolveMadeForEnv,
-  resolveMcpSourcePathTarget,
+  resolveMcpSourceToken,
   resolvePreset,
   resolveScratchpadFolder,
   scratchpadFolderNotFoundResult,
