@@ -183,15 +183,20 @@ function renderReportShell(title, theadHtml, rowsHtml) {
 }
 
 // src/bridgeErrors.ts
-function scratchpadFolderNotFoundResult(requestedFolder) {
+function scratchpadFolderRemediation(preset) {
+  if (preset?.name === "unsloth") return "Run `cat .unsloth_sandbox` and pass its output unchanged as scratchpadFolder.";
+  if (preset?.name === "generic") return "If your host provides a scratchpad-folder tool, call it and pass its return value unchanged; otherwise omit scratchpadFolder to use the server's configured working directory.";
+  return "Call get_scratchpad_folder and pass its returned value unchanged as scratchpadFolder.";
+}
+function scratchpadFolderNotFoundResult(requestedFolder, preset) {
   return {
-    content: [{ type: "text", text: `The scratchpad folder "${requestedFolder}" was not found. Call get_scratchpad_folder and pass its returned value unchanged as scratchpadFolder.` }],
+    content: [{ type: "text", text: `The scratchpad folder "${requestedFolder}" was not found. ${scratchpadFolderRemediation(preset)}` }],
     isError: true
   };
 }
-async function bridgeToolErrorResult(tool, error, logger) {
+async function bridgeToolErrorResult(tool, error, logger, preset) {
   await logger.logError("bridge-tool-failed", error, { tool });
-  if (error instanceof ScratchpadFolderError) return scratchpadFolderNotFoundResult(error.requestedFolder ?? "");
+  if (error instanceof ScratchpadFolderError) return scratchpadFolderNotFoundResult(error.requestedFolder ?? "", preset);
   const message = error instanceof Error ? error.message : String(error);
   return {
     content: [{ type: "text", text: `${tool} failed: ${message}` }],
@@ -748,6 +753,17 @@ async function resolveMcpSourceToken(raw, scratchpadPath) {
   if (!exists) throw new Error(`Source file not found: ${resolvedCandidate}`);
   return resolvedCandidate;
 }
+
+// src/originalLink.ts
+import { pathToFileURL as pathToFileURL2 } from "node:url";
+function buildOriginalLinks(httpBase, scratchpadFolder, filename, absolutePath, notation) {
+  const links = [];
+  if (httpBase && scratchpadFolder) {
+    links.push(`Original ${notation}: ${httpBase.replace(/\/$/, "")}/${encodeURIComponent(scratchpadFolder)}/${encodeURIComponent(filename)}`);
+  }
+  links.push(`Original ${notation}: ${pathToFileURL2(absolutePath).href}`);
+  return links;
+}
 export {
   MADE_FOR_BIONIC_ENV_VAR,
   MADE_FOR_ENV_VAR,
@@ -756,6 +772,7 @@ export {
   bridgeToolErrorResult,
   buildGenericResultContent,
   buildMultiResultText,
+  buildOriginalLinks,
   buildSingleResultText,
   createBridgeLogger,
   ensureMediaState,
@@ -781,6 +798,7 @@ export {
   resolvePreset,
   resolveScratchpadFolder,
   scratchpadFolderNotFoundResult,
+  scratchpadFolderRemediation,
   snapshotImageIndices,
   startStdioMcpServer,
   unslothBeforeToolCall,

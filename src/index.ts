@@ -124,7 +124,7 @@ async function main(): Promise<void> {
 					structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
 				} as any;
 			} catch (error) {
-				return await bridgeToolErrorResult("find_image", error, logger);
+				return await bridgeToolErrorResult("find_image", error, logger, config.preset);
 			}
 		});
 
@@ -153,7 +153,7 @@ Examples:
 				await appendImageServerResponse(result as SearchResult);
 				return { content: [{ type: "text", text: tagImageToolResult(result) }] };
 			} catch (error) {
-				return await bridgeToolErrorResult("tag_image", error, logger);
+				return await bridgeToolErrorResult("tag_image", error, logger, config.preset);
 			}
 		});
 		},
@@ -164,7 +164,7 @@ void main();
 
 async function resolveToolScratchpadFolder(config: BridgeConfig, requestedFolder: string | undefined): Promise<string> {
 	try {
-		return await resolveEffectiveScratchpadPath(config.chatWorkingDirectories, requestedFolder, config.preset.scratchpadFolderRequired);
+		return await resolveEffectiveScratchpadPath(config.chatWorkingDirectories, requestedFolder, config.preset.scratchpadFolderRequired, config.preset);
 	} catch (error) {
 		if (error instanceof ScratchpadFolderError) {
 			error.requestedFolder = requestedFolder;

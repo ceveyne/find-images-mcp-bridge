@@ -16,3 +16,4 @@ export * from "./previewPolicy.js";
 export * from "./mediaMaterializer.js";
 export * from "./presets/index.js";
 export * from "./sourceTargetResolution.js";
+export * from "./originalLink.js";

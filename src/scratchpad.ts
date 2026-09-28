@@ -6,7 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logBridgeEvent, logBridgeError } from "./bridgeLogger.js";
-import { ensureMediaState, resolveScratchpadFolder as coreResolveScratchpadFolder } from "./core-bundle.mjs";
+import { ensureMediaState, resolveScratchpadFolder as coreResolveScratchpadFolder, scratchpadFolderRemediation, type McpResultPreset } from "./core-bundle.mjs";
 
 export { ScratchpadFolderError, readMediaState, writeMediaState, type MediaRecord, type MediaState } from "./core-bundle.mjs";
 
@@ -22,13 +22,13 @@ export async function resolveScratchpadFolder(baseDirectory: string, requestedFo
  * explicit scratchpadFolder — pass requireFolder=true there — mirrors
  * process-image/analyse-image's own src/mcp/scratchpadResolution.ts.
  */
-export async function resolveEffectiveScratchpadPath(chatWorkingDirectories: string, requestedFolder: string | undefined, requireFolder = false): Promise<string> {
+export async function resolveEffectiveScratchpadPath(chatWorkingDirectories: string, requestedFolder: string | undefined, requireFolder = false, preset?: McpResultPreset): Promise<string> {
   const requested = typeof requestedFolder === "string" ? requestedFolder.trim() : "";
   if (requested) {
     return resolveScratchpadFolder(chatWorkingDirectories, requested);
   }
   if (requireFolder) {
-    throw new Error("scratchpadFolder is required (MCP_MADE_FOR=bionic, the default). Call get_scratchpad_folder and pass its return value unchanged.");
+    throw new Error(`scratchpadFolder is required. ${scratchpadFolderRemediation(preset)}`);
   }
   const basePath = path.resolve(chatWorkingDirectories);
   let stats;
