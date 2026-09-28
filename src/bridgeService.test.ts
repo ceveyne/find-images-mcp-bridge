@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -288,7 +289,188 @@ test("buildGenericFindImageResult embeds a base64 preview, an original link, and
     assert.ok(textContents.some((text) => text === `Original p1: ${pathToFileURL("/Users/tester/Pictures/reference-image.png").href}`));
     assert.ok(textContents.some((text) => text.includes("\"prompt\": \"a cat\"")));
     assert.ok(textContents.some((text) => text.includes("Refer to this result as its `p1`")));
+    assert.ok(textContents.some((text) => text.includes("Use an appopriate method to show")));
   } finally {
+    await fs.rm(baseDirectory, { recursive: true, force: true });
+  }
+});
+
+test("buildGenericFindImageResult omits the display-method sentence when mentionDisplayMethod is false (unsloth)", async () => {
+  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
+  try {
+    const scratchpadPath = path.join(baseDirectory, "8x");
+    await fs.mkdir(scratchpadPath);
+    const indexer = {
+      downloadPreview: async () => Buffer.from("preview-bytes"),
+    } as unknown as RemoteIndexerClient;
+    const images = [{
+      rank: 1,
+      imagePaths: ["/Users/tester/Pictures/reference-image.png"],
+      httpPreviewUrls: ["https://indexer/previews/dl_generic3/1/display_1024"],
+    }];
+    const materialized = await materializeSearchResult({ totalFound: 1, images }, scratchpadPath, indexer, { writeReport: false });
+
+    const result = await buildGenericFindImageResult(1, materialized, scratchpadPath, images, false);
+    const textContents = result.content.filter((item): item is { type: string; text: string } => (item as { type?: unknown }).type === "text").map((item) => item.text);
+    assert.ok(!textContents.some((text) => text.includes("Use an appopriate method to show")));
+  } finally {
+    await fs.rm(baseDirectory, { recursive: true, force: true });
+  }
+});
+
+/** Builds a throwaway studio.db matching the real schema (verified 2026-09-27 — see
+ *  made-for-bionic/planning/made-for-preset-rollout-plan.md). Mirrors made-for-bionic-core's
+ *  own unslothAttachments.test.ts fixture builder — kept local since this bridge doesn't
+ *  depend on made-for-bionic-core's TypeScript sources. */
+function buildStudioDb(dbPath: string, threadId: string, attachments: Array<{ id: string; name: string }>): void {
+  const attachmentsJson = JSON.stringify(
+    attachments.map((a) => ({ id: a.id, type: "image", name: a.name, contentType: "image/png", content: [{ type: "image", image: "data:image/png;base64,aGVsbG8=" }] }))
+  );
+  const inventoryRows = attachments.map((a) => `INSERT INTO chat_attachment_inventory VALUES ('msg-1', '${a.id}', '${a.name}', 'image', 'image/png', 100);`).join("\n");
+  const sql = `
+    CREATE TABLE chat_threads (id TEXT PRIMARY KEY);
+    CREATE TABLE chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, created_at TEXT NOT NULL, attachments_json TEXT);
+    CREATE TABLE chat_attachment_inventory (message_id TEXT NOT NULL, attachment_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT, content_type TEXT, size_bytes INTEGER, PRIMARY KEY(message_id, attachment_id)) WITHOUT ROWID;
+    CREATE TABLE chat_attachment_tombstones (thread_id TEXT, message_id TEXT, attachment_id TEXT, deleted_at TEXT);
+    CREATE TABLE chat_attachment_inventory_state (singleton INTEGER PRIMARY KEY, inventory_version INTEGER, dirty INTEGER, backfilled_at TEXT);
+    INSERT INTO chat_attachment_inventory_state VALUES (1, 1, 0, '2026-01-01T00:00:00.000Z');
+    INSERT INTO chat_threads VALUES ('${threadId}');
+    INSERT INTO chat_messages VALUES ('msg-1', '${threadId}', '2026-01-01T00:00:00.000Z', '${attachmentsJson}');
+    ${inventoryRows}
+  `;
+  execFileSync("sqlite3", [dbPath], { input: sql });
+}
+
+test("with MCP_MADE_FOR=unsloth, scratchpadFolder is required, same as bionic", async () => {
+  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
+  const client = new Client({ name: "find-images-mcp-bridge-test", version: "0.1.0" });
+  try {
+    const bridgeEntryPoint = new URL("./index.js", import.meta.url).pathname;
+    await client.connect(new StdioClientTransport({
+      command: process.execPath,
+      args: [bridgeEntryPoint],
+      env: {
+        CHAT_WORKING_DIRECTORIES: baseDirectory,
+        FIND_IMAGES_MCP_INDEXER_URL: "http://127.0.0.1:1",
+        FIND_IMAGES_MCP_INDEXER_TOKEN: "test-token",
+        MCP_MADE_FOR: "unsloth",
+      },
+      stderr: "pipe",
+    }));
+    const { tools } = await client.listTools();
+    const findImage = tools.find((tool) => tool.name === "find_image");
+    assert.deepEqual(findImage?.inputSchema.required, ["scratchpadFolder"]);
+    const scratchpadFolderDescription = (findImage?.inputSchema.properties as Record<string, { description?: string }>).scratchpadFolder?.description;
+    assert.match(scratchpadFolderDescription ?? "", /cat \.unsloth_sandbox/);
+    assert.doesNotMatch(scratchpadFolderDescription ?? "", /get_scratchpad_folder/);
+    const targetDescription = (findImage?.inputSchema.properties as Record<string, { description?: string }>).target?.description;
+    assert.match(targetDescription ?? "", /aN \(attachment/);
+    assert.match(targetDescription ?? "", /"aN"/);
+  } finally {
+    await client.close();
+    await fs.rm(baseDirectory, { recursive: true, force: true });
+  }
+});
+
+test("unsloth pilot: an unresolvable aN target is blocked with the attachment inventory, before the indexer is ever called", async () => {
+  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
+  const client = new Client({ name: "find-images-mcp-bridge-test", version: "0.1.0" });
+  try {
+    const threadId = "__LOCALID_test";
+    await fs.mkdir(path.join(baseDirectory, threadId));
+    const dbPath = path.join(baseDirectory, "studio.db");
+    buildStudioDb(dbPath, threadId, [{ id: "att-1", name: "cat.png" }]);
+    const bridgeEntryPoint = new URL("./index.js", import.meta.url).pathname;
+    await client.connect(new StdioClientTransport({
+      command: process.execPath,
+      args: [bridgeEntryPoint],
+      env: {
+        CHAT_WORKING_DIRECTORIES: baseDirectory,
+        FIND_IMAGES_MCP_INDEXER_URL: "http://127.0.0.1:1",
+        FIND_IMAGES_MCP_INDEXER_TOKEN: "test-token",
+        MCP_MADE_FOR: "unsloth",
+        CLIENT_DB_LOCATION: dbPath,
+      },
+      stderr: "pipe",
+    }));
+    const result = await client.callTool({ name: "find_image", arguments: { scratchpadFolder: threadId, query: "cats", target: "a2" } });
+    assert.equal(result.isError, undefined);
+    const text = (result.content as Array<{ type: string; text?: string }>).find((item) => item.type === "text")?.text;
+    assert.equal(text, "a1: cat.png, image, image/png, 100");
+  } finally {
+    await client.close();
+    await fs.rm(baseDirectory, { recursive: true, force: true });
+  }
+});
+
+test("unsloth pilot: the literal \"aN\" placeholder also lists the attachment inventory", async () => {
+  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
+  const client = new Client({ name: "find-images-mcp-bridge-test", version: "0.1.0" });
+  try {
+    const threadId = "__LOCALID_test";
+    await fs.mkdir(path.join(baseDirectory, threadId));
+    const dbPath = path.join(baseDirectory, "studio.db");
+    buildStudioDb(dbPath, threadId, [{ id: "att-1", name: "cat.png" }]);
+    const bridgeEntryPoint = new URL("./index.js", import.meta.url).pathname;
+    await client.connect(new StdioClientTransport({
+      command: process.execPath,
+      args: [bridgeEntryPoint],
+      env: {
+        CHAT_WORKING_DIRECTORIES: baseDirectory,
+        FIND_IMAGES_MCP_INDEXER_URL: "http://127.0.0.1:1",
+        FIND_IMAGES_MCP_INDEXER_TOKEN: "test-token",
+        MCP_MADE_FOR: "unsloth",
+        CLIENT_DB_LOCATION: dbPath,
+      },
+      stderr: "pipe",
+    }));
+    for (const placeholder of ["aN", "a"]) {
+      const result = await client.callTool({ name: "find_image", arguments: { scratchpadFolder: threadId, query: "cats", target: placeholder } });
+      assert.equal(result.isError, undefined, `target=${placeholder}`);
+      const text = (result.content as Array<{ type: string; text?: string }>).find((item) => item.type === "text")?.text;
+      assert.equal(text, "a1: cat.png, image, image/png, 100", `target=${placeholder}`);
+    }
+  } finally {
+    await client.close();
+    await fs.rm(baseDirectory, { recursive: true, force: true });
+  }
+});
+
+test("unsloth pilot: a valid aN target passes the hook and reaches target resolution (materializes a1 on disk)", async () => {
+  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
+  const client = new Client({ name: "find-images-mcp-bridge-test", version: "0.1.0" });
+  try {
+    const threadId = "__LOCALID_test";
+    const scratchpadPath = path.join(baseDirectory, threadId);
+    await fs.mkdir(scratchpadPath);
+    const dbPath = path.join(baseDirectory, "studio.db");
+    buildStudioDb(dbPath, threadId, [{ id: "att-1", name: "cat.png" }]);
+    const bridgeEntryPoint = new URL("./index.js", import.meta.url).pathname;
+    await client.connect(new StdioClientTransport({
+      command: process.execPath,
+      args: [bridgeEntryPoint],
+      env: {
+        CHAT_WORKING_DIRECTORIES: baseDirectory,
+        FIND_IMAGES_MCP_INDEXER_URL: "http://127.0.0.1:1",
+        FIND_IMAGES_MCP_INDEXER_TOKEN: "test-token",
+        MCP_MADE_FOR: "unsloth",
+        CLIENT_DB_LOCATION: dbPath,
+      },
+      stderr: "pipe",
+    }));
+    // target="a1" exists (unlike the previous test's "a2") — the hook must materialize it and let
+    // the call proceed into resolveRemoteTarget()/indexer.uploadImage(), which then fails because
+    // no real indexer is listening on this dummy port. The important assertion is what it does NOT
+    // say: neither the old "not supported" aN-rejection error nor the inventory-blocked message.
+    const result = await client.callTool({ name: "find_image", arguments: { scratchpadFolder: threadId, query: "cats", target: "a1" } });
+    const text = (result.content as Array<{ type: string; text?: string }>).find((item) => item.type === "text")?.text ?? "";
+    assert.ok(!text.includes("not supported"), `should not hit the aN-rejection path: ${text}`);
+    assert.ok(!text.startsWith("a1: cat.png"), `should not be blocked with the inventory (a1 exists): ${text}`);
+    const state = await readMediaState(scratchpadPath);
+    assert.equal(state.attachments.length, 1);
+    assert.equal(state.attachments[0].a, 1);
+  } finally {
+    await client.close();
     await fs.rm(baseDirectory, { recursive: true, force: true });
   }
 });

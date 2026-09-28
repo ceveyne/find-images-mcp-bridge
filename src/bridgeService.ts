@@ -121,12 +121,17 @@ export function findImageToolResult(totalFound: number, materialized: { queryId:
  * verbatim (no HTML report — see presets/generic.ts's buildGenericResultContent()). `images`/
  * `pictureNumbersByRank` come straight out of materializeSearchResult(); no metadata is
  * re-extracted or reformatted here.
+ *
+ * `mentionDisplayMethod` (default true): unsloth already displays base64 image content and
+ * attachments automatically — pass false there to omit the "show this to the user" sentence,
+ * which would otherwise be actively wrong (see made-for-preset-rollout-plan.md).
  */
 export async function buildGenericFindImageResult(
   totalFound: number,
   materialized: { queryId: string; ranks: number[]; pictureNumbersByRank: Map<number, number> },
   scratchpadPath: string,
   images: SearchImage[],
+  mentionDisplayMethod = true,
 ): Promise<{ content: unknown[] }> {
   const results: MaterializedResult[] = materialized.ranks.map((rank) => {
     const pictureNumber = materialized.pictureNumbersByRank.get(rank);
@@ -142,7 +147,7 @@ export async function buildGenericFindImageResult(
     };
   });
   const summaryText = JSON.stringify({ totalFound, queryId: materialized.queryId, images }, null, 2);
-  return buildGenericResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)]);
+  return buildGenericResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)], mentionDisplayMethod);
 }
 
 function originalLinkFor(sourceUrl: string, notation: string): string {

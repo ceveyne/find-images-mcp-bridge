@@ -2,6 +2,7 @@ import type { McpResultPreset } from "./types.js";
 export * from "./types.js";
 export * from "./bionic.js";
 export * from "./generic.js";
+export * from "./unsloth.js";
 /**
  * Reserved for a future third+ preset (e.g. "unsloth", "claude") — NOT yet the primary,
  * documented selector for any bridge. MCP_MADE_FOR_BIONIC (boolean) remains the primary,

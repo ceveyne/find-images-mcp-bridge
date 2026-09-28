@@ -17,6 +17,14 @@ export type MediaRecord = {
     rank?: number;
     sourceTool?: string;
     pluginId?: string;
+    /** External unique id used to idempotently re-sync a record across repeated materialization
+     *  passes (e.g. unsloth's chat_attachment_inventory.attachment_id) — not notation-specific. */
+    sourceId?: string;
+    /** Mirrors draw-things-chat-core's AttachmentRecord fields of the same name. */
+    originalName?: string;
+    width?: number;
+    height?: number;
+    createdAt?: string;
 };
 export type MediaState = {
     attachments: MediaRecord[];
