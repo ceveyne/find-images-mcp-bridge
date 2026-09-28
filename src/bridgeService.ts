@@ -4,9 +4,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { RemoteIndexerClient } from "./remoteIndexerClient.js";
 import { readMediaState, type MediaRecord, type MediaState, writeMediaState } from "./scratchpad.js";
-import { escapeHtml, nextCounter, recordForNotation, renderReportShell } from "./core-bundle.mjs";
+import { buildGenericResultContent, escapeHtml, nextCounter, recordForNotation, renderReportShell, type MaterializedResult } from "./core-bundle.mjs";
 
-type SearchImage = Record<string, unknown> & {
+export type SearchImage = Record<string, unknown> & {
   rank?: unknown;
   imagePaths?: unknown;
   httpPreviewUrls?: unknown;
@@ -60,7 +60,8 @@ export async function materializeSearchResult(
   result: SearchResult,
   scratchpadPath: string,
   indexer: RemoteIndexerClient,
-): Promise<{ queryId: string; ranks: number[]; reportPath: string }> {
+  options?: { writeReport?: boolean },
+): Promise<{ queryId: string; ranks: number[]; reportPath?: string; pictureNumbersByRank: Map<number, number> }> {
   const images = searchImages(result);
   if (images.length === 0) throw new Error("The remote search returned no preview URLs to materialize.");
   let previewEntries: Array<{ rank: number; previewUrl: string; sourceUrl: string }>;
@@ -97,9 +98,14 @@ export async function materializeSearchResult(
   }
   await writeMediaState(scratchpadPath, state);
 
-  const reportPath = path.join(scratchpadPath, `${queryId}.html`);
-  await fs.writeFile(reportPath, buildHtmlReport(queryId, images, pictureNumbersByRank), "utf8");
-  return { queryId, ranks, reportPath };
+  // The HTML report is a Bionic-only presentation mechanism (see findImageToolResult()) — the
+  // generic preset skips it entirely (see presets/generic.ts's writeHtmlReportForMultipleResults: false).
+  let reportPath: string | undefined;
+  if (options?.writeReport ?? true) {
+    reportPath = path.join(scratchpadPath, `${queryId}.html`);
+    await fs.writeFile(reportPath, buildHtmlReport(queryId, images, pictureNumbersByRank), "utf8");
+  }
+  return { queryId, ranks, reportPath, pictureNumbersByRank };
 }
 
 export function findImageToolResult(totalFound: number, materialized: { queryId: string; ranks: number[]; reportPath: string }): string {
@@ -107,6 +113,42 @@ export function findImageToolResult(totalFound: number, materialized: { queryId:
   const previewPaths = materialized.ranks.map((rank) => path.join(scratchpadPath, `preview-${materialized.queryId}-${rank}.jpg`));
   const viewPayload = JSON.stringify({ paths: previewPaths, quality: "medium" }, null, 2);
   return `The search returned ${totalFound} results. ${materialized.queryId}.html provides an overview of the results. Immediately call "open_url_in_app_browser" with the JSON below. Do not call any other tool and do not write a user-facing response before this call completes.\n\n${JSON.stringify({ opened: true, url: pathToFileURL(materialized.reportPath).href }, null, 2)}\n\nAfter the HTML report is open, use "view_images" to inspect the best matches yourself. This tool does not display images to the user:\n\n${viewPayload}\n\nThen present the best results to the user in the chat. To show a selected image to the user, first call \`attach_file(path="${path.join(scratchpadPath, `preview-${materialized.queryId}-N.jpg`)}")\`, then write its Markdown link directly in the chat. Example: ![preview-${materialized.queryId}-N.jpg](bionic-attached://2eb90efa.jpg?w=1024&h=768). Refer to a result in a subsequent find_image or tag_image target as its displayed \`pN\` identifier.\n\nTo improve the search, refine the query text or provide any reference image.\n\nAll metadata for the found images is available in ${materialized.queryId}.html.`;
+}
+
+/**
+ * Generic-preset result content: base64 preview per result (from the already-downloaded preview
+ * JPG), a per-result original-source link, and the raw per-image search metadata forwarded
+ * verbatim (no HTML report — see presets/generic.ts's buildGenericResultContent()). `images`/
+ * `pictureNumbersByRank` come straight out of materializeSearchResult(); no metadata is
+ * re-extracted or reformatted here.
+ */
+export async function buildGenericFindImageResult(
+  totalFound: number,
+  materialized: { queryId: string; ranks: number[]; pictureNumbersByRank: Map<number, number> },
+  scratchpadPath: string,
+  images: SearchImage[],
+): Promise<{ content: unknown[] }> {
+  const results: MaterializedResult[] = materialized.ranks.map((rank) => {
+    const pictureNumber = materialized.pictureNumbersByRank.get(rank);
+    if (!pictureNumber) throw new Error(`Search result rank ${rank} has no picture number.`);
+    const { sourceUrl } = previewEntryFor(images.find((image) => image.rank === rank)!);
+    return {
+      index: pictureNumber,
+      notation: `p${pictureNumber}`,
+      filename: "",
+      // Repurposed to carry the (possibly non-filesystem) sourceUrl through to originalLinksFor below.
+      absolutePath: sourceUrl,
+      previewFilename: `preview-${materialized.queryId}-${rank}.jpg`,
+    };
+  });
+  const summaryText = JSON.stringify({ totalFound, queryId: materialized.queryId, images }, null, 2);
+  return buildGenericResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)]);
+}
+
+function originalLinkFor(sourceUrl: string, notation: string): string {
+  if (!sourceUrl.trim()) return `Original ${notation}: unknown source`;
+  if (path.isAbsolute(sourceUrl)) return `Original ${notation}: ${pathToFileURL(sourceUrl).href}`;
+  return `Original ${notation}: ${sourceUrl}`;
 }
 
 function recordForLatestQueryRank(state: MediaState, rank: number): MediaRecord | undefined {

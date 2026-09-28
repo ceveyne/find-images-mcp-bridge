@@ -16,6 +16,9 @@ The stdio definition requires these values:
 
 - `command`: node
 - `args`: path to the find-images-mcp-bridge's `index.js`. Example: `/Users/ceveyne/.lmstudio/extensions/plugins/ceveyne/find-images-mcp-bridge/dist/index.js`
+- `MCP_MADE_FOR_BIONIC`: default `true`.
+  - `true` — made for Bionic: `scratchpadFolder` is required for `find_image`/`tag_image`, and `find_image` results are presented via an HTML report + tool-chaining instructions (`open_url_in_app_browser`/`view_images`/`attach_file`).
+  - `false` — produces a generic tool result for other MCP clients: `scratchpadFolder` is optional (omit it to use `CHAT_WORKING_DIRECTORIES` directly), and `find_image` results include an inline base64 JPEG preview per match plus a plain-text original-source link, instead of an HTML report.
 - `CHAT_WORKING_DIRECTORIES`: absolute base directory for all Bionic scratchpads. Example: `/Users/ceveyne/.lmstudio/scratchpads`
 - `FIND_IMAGES_MCP_INDEXER_URL`: base URL of the image server. Example: `https://127.0.0.1:9760/mcp`
 - `FIND_IMAGES_MCP_INDEXER_TOKEN`: bearer token for the image server. Example: `b2f4b1e2-3g0w-4c8t-3b7q-6n2b5b7x1a9d`
@@ -31,6 +34,7 @@ The stdio definition requires these values:
     "args": ["/absolute/path/to/find-images-mcp-bridge/dist/index.js"],
     "cwd": "/absolute/path/to/bionic-scratchpads",
     "env": {
+      "MCP_MADE_FOR_BIONIC": "true",
       "CHAT_WORKING_DIRECTORIES": "/absolute/path/to/bionic-scratchpads",
       "FIND_IMAGES_MCP_INDEXER_URL": "https://find-images-server.example.com/mcp",
       "FIND_IMAGES_MCP_INDEXER_TOKEN": "<bearer-token>",
@@ -39,6 +43,16 @@ The stdio definition requires these values:
   }
 }
 ```
+
+### Env vars at a glance
+
+| Env var                           | Default | Required |
+| --------------------------------- | ------- | -------- |
+| `MCP_MADE_FOR_BIONIC`             | `true`  | No       |
+| `CHAT_WORKING_DIRECTORIES`        | –       | Yes      |
+| `FIND_IMAGES_MCP_INDEXER_URL`     | –       | Yes      |
+| `FIND_IMAGES_MCP_INDEXER_TOKEN`   | –       | Yes      |
+| `FIND_IMAGES_MCP_INDEXER_CA_CERT` | –       | No       |
 
 ## Setup step by step
 

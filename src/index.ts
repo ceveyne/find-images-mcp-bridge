@@ -1,39 +1,47 @@
 import { fromJsonSchema } from "@modelcontextprotocol/server";
 import { logBridgeError, logBridgeEvent } from "./bridgeLogger.js";
-import { appendImageServerResponse, findImageToolResult, materializeSearchResult, resolveRemoteTarget, type SearchResult } from "./bridgeService.js";
-import { readBridgeConfig } from "./config.js";
+import { appendImageServerResponse, buildGenericFindImageResult, findImageToolResult, materializeSearchResult, resolveRemoteTarget, type SearchImage, type SearchResult } from "./bridgeService.js";
+import { readBridgeConfig, type BridgeConfig } from "./config.js";
 import { bridgeToolErrorResult, startStdioMcpServer } from "./core-bundle.mjs";
 import { RemoteIndexerClient } from "./remoteIndexerClient.js";
-import { resolveScratchpadFolder, ScratchpadFolderError } from "./scratchpad.js";
+import { resolveEffectiveScratchpadPath, ScratchpadFolderError } from "./scratchpad.js";
+import { assertNoAttachmentNotation } from "./sourceNotation.js";
 
-const FindImageSchema = fromJsonSchema({
-	type: "object",
-	properties: {
-		scratchpadFolder: { type: "string", description: "Required scratchpad session folder. Obtain this value with get_scratchpad_folder." },
-		query: { type: "string", description: "Search instruction. With target, positively describe additions or changes; without target, write a complete description. Model:, LoRAs:, Tag:, Tags:, Size:, Source:, Origin:, and Timestamp: are hard AND filters." },
-		target: { type: "string", description: "Reference image: aN, vN, iN, pN, a filename in the scratchpad folder, or an absolute path. Set it for 'like this image', 'same style as a1', or changes to a shown image." },
-		includeMetadata: { type: "boolean", description: "Add target generation metadata as a ranking signal across the full corpus, not an identical-metadata filter." },
-		excludeImage: { type: "boolean", description: "Ignore target pixels. Use only for prompt/metadata similarity, not 'same style' or other image-guided changes." },
-		retrievalLimit: { type: "integer", minimum: 1, description: "Maximum number of matching images to return." },
-		scopeId: { type: "string", description: "Reserved for the upcoming Search Scope feature; currently has no effect." },
-	},
-	required: ["scratchpadFolder"],
-	additionalProperties: false,
-});
+const SCRATCHPAD_FOLDER_DESCRIPTION_REQUIRED = "Required scratchpad session folder. Obtain this value with get_scratchpad_folder.";
+const SCRATCHPAD_FOLDER_DESCRIPTION_OPTIONAL = "Optional scratchpad session folder name, one level under CHAT_WORKING_DIRECTORIES. Omit to write directly into CHAT_WORKING_DIRECTORIES.";
 
-const TagImageSchema = fromJsonSchema({
-	type: "object",
-	properties: {
-		scratchpadFolder: { type: "string", description: "Required scratchpad session folder. Obtain this value with get_scratchpad_folder." },
-		action: { type: "string", enum: ["list_tags", "show_tag", "add_tag", "remove_tag", "remove_all_tags"], description: "list_tags lists all indexed tags; show_tag lists current tags; add_tag adds tags; remove_tag removes named tags; remove_all_tags clears every tag from each target." },
-		target: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "One or more indexed image references: vN, iN, pN, a filename in the scratchpad folder, or an absolute image path. Use an array for multiple targets." },
-		tags: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "Tags to add or remove. Use an array for multiple tags." },
-	},
-	required: ["scratchpadFolder", "action"],
-	additionalProperties: false,
-});
+function findImageSchema(requireScratchpadFolder: boolean) {
+	return fromJsonSchema({
+		type: "object",
+		properties: {
+			scratchpadFolder: { type: "string", description: requireScratchpadFolder ? SCRATCHPAD_FOLDER_DESCRIPTION_REQUIRED : SCRATCHPAD_FOLDER_DESCRIPTION_OPTIONAL },
+			query: { type: "string", description: "Search instruction. With target, positively describe additions or changes; without target, write a complete description. Model:, LoRAs:, Tag:, Tags:, Size:, Source:, Origin:, and Timestamp: are hard AND filters." },
+			target: { type: "string", description: "Reference image: vN, iN, pN, a filename in the scratchpad folder, or an absolute path. Set it for 'like this image', 'same style as p1', or changes to a shown image." },
+			includeMetadata: { type: "boolean", description: "Add target generation metadata as a ranking signal across the full corpus, not an identical-metadata filter." },
+			excludeImage: { type: "boolean", description: "Ignore target pixels. Use only for prompt/metadata similarity, not 'same style' or other image-guided changes." },
+			retrievalLimit: { type: "integer", minimum: 1, description: "Maximum number of matching images to return." },
+			scopeId: { type: "string", description: "Reserved for the upcoming Search Scope feature; currently has no effect." },
+		},
+		required: requireScratchpadFolder ? ["scratchpadFolder"] : [],
+		additionalProperties: false,
+	});
+}
 
-type BridgeToolArgs = Record<string, unknown> & { scratchpadFolder: string };
+function tagImageSchema(requireScratchpadFolder: boolean) {
+	return fromJsonSchema({
+		type: "object",
+		properties: {
+			scratchpadFolder: { type: "string", description: requireScratchpadFolder ? SCRATCHPAD_FOLDER_DESCRIPTION_REQUIRED : SCRATCHPAD_FOLDER_DESCRIPTION_OPTIONAL },
+			action: { type: "string", enum: ["list_tags", "show_tag", "add_tag", "remove_tag", "remove_all_tags"], description: "list_tags lists all indexed tags; show_tag lists current tags; add_tag adds tags; remove_tag removes named tags; remove_all_tags clears every tag from each target." },
+			target: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "One or more indexed image references: vN, iN, pN, a filename in the scratchpad folder, or an absolute image path. Use an array for multiple targets." },
+			tags: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "Tags to add or remove. Use an array for multiple tags." },
+		},
+		required: requireScratchpadFolder ? ["scratchpadFolder", "action"] : ["action"],
+		additionalProperties: false,
+	});
+}
+
+type BridgeToolArgs = Record<string, unknown> & { scratchpadFolder?: string };
 
 const logger = { logEvent: logBridgeEvent, logError: logBridgeError };
 
@@ -43,6 +51,7 @@ async function main(): Promise<void> {
 	await logBridgeEvent("Bridge started", {
 		indexerEndpoint: config.indexerUrl.origin,
 		chatWorkingDirectories: config.chatWorkingDirectories,
+		preset: config.preset.name,
 		hasCaCertificate: Boolean(config.indexerCaCertificatePath),
 		nodeExecutable: process.execPath,
 		nodeVersion: process.version,
@@ -50,17 +59,19 @@ async function main(): Promise<void> {
 		userId: process.getuid?.(),
 		path: process.env.PATH,
 	});
+	const requireScratchpadFolder = config.preset.scratchpadFolderRequired;
 	startStdioMcpServer({
 		name: "find-images-mcp-bridge",
 		version: "0.1.0",
 		onShutdown: () => indexer.stopStartedIndexer(),
 		buildServer: (server) => {
-			server.registerTool("find_image", { description: "Find visually similar and metadata-related images.\nUse this tool for cross-modal retrieval over images from several sources across the local network.", inputSchema: FindImageSchema }, async (args) => {
+			server.registerTool("find_image", { description: "Find visually similar and metadata-related images.\nUse this tool for cross-modal retrieval over images from several sources across the local network.", inputSchema: findImageSchema(requireScratchpadFolder) }, async (args) => {
 			try {
 				const toolArgs = args as BridgeToolArgs;
-				const scratchpadPath = await resolveToolScratchpadFolder(config.chatWorkingDirectories, toolArgs.scratchpadFolder);
+				const scratchpadPath = await resolveToolScratchpadFolder(config, toolArgs.scratchpadFolder);
 				await logBridgeEvent("bridge-tool-request", { tool: "find_image", scratchpadPath, hasTarget: typeof toolArgs.target === "string" });
 				const { scratchpadFolder: _scratchpadFolder, ...remoteArgs } = toolArgs;
+				assertNoAttachmentNotation(remoteArgs);
 				if (typeof remoteArgs.target === "string") {
 					remoteArgs.target = await resolveRemoteTarget(remoteArgs.target, scratchpadPath, indexer);
 				}
@@ -69,11 +80,21 @@ async function main(): Promise<void> {
 				if (typeof result.error === "string") throw new Error(result.error);
 				const totalFound = typeof result.totalFound === "number" ? result.totalFound : Array.isArray(result.images) ? result.images.length : 0;
 				if (totalFound === 0) return { content: [{ type: "text", text: "The search returned 0 results." }] };
-				const materialized = await materializeSearchResult(result, scratchpadPath, indexer);
+				const isBionic = config.preset.name === "bionic";
+				const materialized = await materializeSearchResult(result, scratchpadPath, indexer, { writeReport: isBionic });
+				if (isBionic) {
+					if (!materialized.reportPath) throw new Error("Bionic preset requires an HTML report path.");
+					return {
+						content: [{ type: "text", text: findImageToolResult(totalFound, { queryId: materialized.queryId, ranks: materialized.ranks, reportPath: materialized.reportPath }) }],
+						structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
+					};
+				}
+				const images = Array.isArray(result.images) ? result.images.filter((image): image is SearchImage => !!image && typeof image === "object") : [];
+				const generic = await buildGenericFindImageResult(totalFound, materialized, scratchpadPath, images);
 				return {
-					content: [{ type: "text", text: findImageToolResult(totalFound, materialized) }],
+					...generic,
 					structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
-				};
+				} as any;
 			} catch (error) {
 				return await bridgeToolErrorResult("find_image", error, logger);
 			}
@@ -83,12 +104,13 @@ async function main(): Promise<void> {
 
 Examples:
 - { "action": "add_tag", "target": "p1", "tags": ["favorite"] }
-- { "action": "remove_tag", "target": ["p1", "v2", "/absolute/path/image.png"], "tags": ["favorite", "reviewed"] }`, inputSchema: TagImageSchema }, async (args) => {
+- { "action": "remove_tag", "target": ["p1", "v2", "/absolute/path/image.png"], "tags": ["favorite", "reviewed"] }`, inputSchema: tagImageSchema(requireScratchpadFolder) }, async (args) => {
 			try {
 				const toolArgs = args as BridgeToolArgs;
-				const scratchpadPath = await resolveToolScratchpadFolder(config.chatWorkingDirectories, toolArgs.scratchpadFolder);
+				const scratchpadPath = await resolveToolScratchpadFolder(config, toolArgs.scratchpadFolder);
 				await logBridgeEvent("bridge-tool-request", { tool: "tag_image", scratchpadPath, action: typeof toolArgs.action === "string" ? toolArgs.action : null });
 				const { scratchpadFolder: _scratchpadFolder, ...remoteArgs } = toolArgs;
+				assertNoAttachmentNotation(remoteArgs);
 				if (typeof remoteArgs.target === "string") {
 					remoteArgs.target = await resolveRemoteTarget(remoteArgs.target, scratchpadPath, indexer);
 				} else if (Array.isArray(remoteArgs.target)) {
@@ -110,13 +132,13 @@ Examples:
 
 void main();
 
-async function resolveToolScratchpadFolder(baseDirectory: string, requestedFolder: string): Promise<string> {
+async function resolveToolScratchpadFolder(config: BridgeConfig, requestedFolder: string | undefined): Promise<string> {
 	try {
-		return await resolveScratchpadFolder(baseDirectory, requestedFolder);
+		return await resolveEffectiveScratchpadPath(config.chatWorkingDirectories, requestedFolder, config.preset.scratchpadFolderRequired);
 	} catch (error) {
 		if (error instanceof ScratchpadFolderError) {
 			error.requestedFolder = requestedFolder;
-			await logBridgeError("Scratchpad rejected", error, { requestedFolder, configuredBaseDirectory: baseDirectory });
+			await logBridgeError("Scratchpad rejected", error, { requestedFolder, configuredBaseDirectory: config.chatWorkingDirectories });
 			throw error;
 		}
 		throw error;
