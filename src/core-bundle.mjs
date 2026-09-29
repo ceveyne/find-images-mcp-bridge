@@ -356,7 +356,7 @@ var genericPreset = {
   writeHtmlReportForMultipleResults: false,
   scratchpadFolderRequired: false
 };
-async function buildGenericResultContent(toolLabel, tier, scratchpadPath, results, summaryText, originalLinksFor, mentionDisplayMethod = true) {
+async function buildGenericResultContent(toolLabel, tier, scratchpadPath, results, summaryText, originalLinksFor) {
   const content = [];
   for (const result of results) {
     if (!result.previewFilename) continue;
@@ -378,10 +378,9 @@ async function buildGenericResultContent(toolLabel, tier, scratchpadPath, result
   const primaryNotation = results[0]?.notation ?? "";
   const pronoun = results.length > 1 ? "them" : "it";
   const kind = tier === "final" ? "final result" : "intermediate/working";
-  const displayClause = mentionDisplayMethod ? ` Use an appopriate method to show the image(s) ${pronoun} to the user.` : "";
   content.push({
     type: "text",
-    text: `${toolLabel} produced ${results.length} ${kind} file(s): ${notations}.${displayClause}
+    text: `${toolLabel} produced ${results.length} ${kind} file(s): ${notations}. Use an appopriate method to show the image(s) ${pronoun} to the user.
 
 Refer to this result as its \`${primaryNotation}\` canvas/moodboard identifier in any subsequent tool call that accepts an image reference \u2014 e.g. generate_image, zoom-in, or mask.`
   });
@@ -688,6 +687,43 @@ async function unslothBeforeToolCall(ctx) {
   }
   return { blocked: false };
 }
+function presentImageGuidance2(tier, previewFilename, notation) {
+  const markdownExample = `Example: ![${notation}](${previewFilename}).`;
+  if (tier === "process") {
+    return `This is an intermediate/working result, not a final one. Only attach this file to the chat if it becomes vote-relevant on its own (e.g. the user should confirm this selection) \u2014 if so, write its Markdown link directly in the chat. ${markdownExample}`;
+  }
+  return `If you choose to comment on how well the result matches your prompt, present the image to the user in the chat by writing its Markdown link directly in the chat. ${markdownExample}`;
+}
+async function buildUnslothResultContent(toolLabel, tier, scratchpadPath, results, summaryText, originalLinksFor) {
+  const content = [];
+  for (const result of results) {
+    if (!result.previewFilename) continue;
+    try {
+      const data = await fs6.readFile(path7.join(scratchpadPath, result.previewFilename));
+      content.push({ type: "image", fileName: result.previewFilename, mimeType: "image/jpeg", data: data.toString("base64") });
+    } catch {
+    }
+  }
+  const notations = results.map((r) => r.notation).join(", ");
+  const primaryNotation = results[0]?.notation ?? "";
+  const kind = tier === "final" ? "final result" : "intermediate/working";
+  content.push({ type: "text", text: `${toolLabel} produced ${results.length} ${kind} file(s): ${notations}.` });
+  for (const result of results) {
+    for (const link of originalLinksFor(result)) {
+      content.push({ type: "text", text: link });
+    }
+  }
+  content.push({ type: "text", text: presentImageGuidance2(tier, results[0]?.previewFilename ?? "", primaryNotation) });
+  content.push({
+    type: "text",
+    text: `Refer to this result as its \`${primaryNotation}\` canvas/moodboard identifier in any subsequent tool call that accepts an image reference \u2014 e.g. generate_image, zoom-in, or mask.`
+  });
+  if (summaryText) {
+    content.push({ type: "text", text: "Metadata for the generated file (from the tool call):" });
+    content.push({ type: "text", text: summaryText });
+  }
+  return { content };
+}
 
 // src/presets/index.ts
 var MADE_FOR_ENV_VAR = "MCP_MADE_FOR";
@@ -774,6 +810,7 @@ export {
   buildMultiResultText,
   buildOriginalLinks,
   buildSingleResultText,
+  buildUnslothResultContent,
   createBridgeLogger,
   ensureMediaState,
   escapeHtml,
