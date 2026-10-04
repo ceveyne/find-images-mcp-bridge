@@ -1,6 +1,6 @@
 import { fromJsonSchema } from "@modelcontextprotocol/server";
 import { logBridgeError, logBridgeEvent } from "./bridgeLogger.js";
-import { appendImageServerResponse, buildGenericFindImageResult, findImageToolResult, materializeSearchResult, resolveRemoteTarget, type SearchImage, type SearchResult } from "./bridgeService.js";
+import { appendImageServerResponse, buildGenericFindImageResult, buildUnslothFindImageResult, findImageToolResult, materializeSearchResult, resolveRemoteTarget, type SearchImage, type SearchResult } from "./bridgeService.js";
 import { readBridgeConfig, type BridgeConfig } from "./config.js";
 import { bridgeToolErrorResult, startStdioMcpServer, type McpResultPreset } from "./core-bundle.mjs";
 import { RemoteIndexerClient } from "./remoteIndexerClient.js";
@@ -116,9 +116,9 @@ async function main(): Promise<void> {
 					};
 				}
 				const images = Array.isArray(result.images) ? result.images.filter((image): image is SearchImage => !!image && typeof image === "object") : [];
-				// unsloth already displays base64 image content automatically — the generic preset's
-				// "show this to the user" sentence would be actively wrong there, not just redundant.
-				const generic = await buildGenericFindImageResult(totalFound, materialized, scratchpadPath, images, config.preset.name !== "unsloth");
+				const generic = config.preset.name === "unsloth"
+					? await buildUnslothFindImageResult(totalFound, materialized, scratchpadPath, images)
+					: await buildGenericFindImageResult(totalFound, materialized, scratchpadPath, images);
 				return {
 					...generic,
 					structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },

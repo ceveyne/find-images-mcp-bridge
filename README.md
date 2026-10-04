@@ -8,6 +8,19 @@ The bridge exposes `find_image` and `tag_image` tools. It forwards search and ta
 
 - macOS 26 or later on Apple Silicon.
 - **[Find Images.app](https://github.com/ceveyne/find-images-releases)** version `0.1.56-1` or later, fully set up and verified to find images.
+- [Node.js](https://nodejs.org/) and `npm` installed.
+
+## Installation
+
+```bash
+cd ~/.lmstudio/extensions/plugins/ceveyne
+git clone https://github.com/ceveyne/find-images-mcp-bridge
+cd find-images-mcp-bridge
+npm install
+npm run build
+```
+
+This produces `dist/index.js`, the entrypoint referenced by `args` in every configuration below.
 
 ## Bionic Configuration
 

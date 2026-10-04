@@ -1,6 +1,6 @@
 {
   "name": "find-images-mcp-bridge",
-  "version": "0.1.3 (Revision 3)",
+  "version": "0.1.4 (Revision 4)",
   "description": "Local stdio MCP bridge for Find Images MCP server.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

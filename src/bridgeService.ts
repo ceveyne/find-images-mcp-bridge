@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { RemoteIndexerClient } from "./remoteIndexerClient.js";
 import { readMediaState, type MediaRecord, type MediaState, writeMediaState } from "./scratchpad.js";
-import { buildGenericResultContent, escapeHtml, nextCounter, recordForNotation, renderReportShell, type MaterializedResult } from "./core-bundle.mjs";
+import { buildGenericResultContent, buildUnslothResultContent, escapeHtml, nextCounter, recordForNotation, renderReportShell, type MaterializedResult } from "./core-bundle.mjs";
 
 export type SearchImage = Record<string, unknown> & {
   rank?: unknown;
@@ -115,24 +115,20 @@ export function findImageToolResult(totalFound: number, materialized: { queryId:
   return `The search returned ${totalFound} results. ${materialized.queryId}.html provides an overview of the results. Immediately call "open_url_in_app_browser" with the JSON below. Do not call any other tool and do not write a user-facing response before this call completes.\n\n${JSON.stringify({ opened: true, url: pathToFileURL(materialized.reportPath).href }, null, 2)}\n\nAfter the HTML report is open, use "view_images" to inspect the best matches yourself. This tool does not display images to the user:\n\n${viewPayload}\n\nThen present the best results to the user in the chat. To show a selected image to the user, first call \`attach_file(path="${path.join(scratchpadPath, `preview-${materialized.queryId}-N.jpg`)}")\`, then write its Markdown link directly in the chat. Example: ![preview-${materialized.queryId}-N.jpg](bionic-attached://2eb90efa.jpg?w=1024&h=768). Refer to a result in a subsequent find_image or tag_image target as its displayed \`pN\` identifier.\n\nTo improve the search, refine the query text or provide any reference image.\n\nAll metadata for the found images is available in ${materialized.queryId}.html.`;
 }
 
+type FindImageMaterialized = { queryId: string; ranks: number[]; pictureNumbersByRank: Map<number, number> };
+
 /**
- * Generic-preset result content: base64 preview per result (from the already-downloaded preview
- * JPG), a per-result original-source link, and the raw per-image search metadata forwarded
- * verbatim (no HTML report — see presets/generic.ts's buildGenericResultContent()). `images`/
- * `pictureNumbersByRank` come straight out of materializeSearchResult(); no metadata is
- * re-extracted or reformatted here.
- *
- * `mentionDisplayMethod` (default true): unsloth already displays base64 image content and
- * attachments automatically — pass false there to omit the "show this to the user" sentence,
- * which would otherwise be actively wrong (see made-for-preset-rollout-plan.md).
+ * Builds the shared `MaterializedResult[]`/`summaryText` pair consumed by both
+ * `buildGenericFindImageResult()` and `buildUnslothFindImageResult()` below — base64 preview per
+ * result (from the already-downloaded preview JPG), a per-result original-source link, and the
+ * raw per-image search metadata forwarded verbatim. `images`/`pictureNumbersByRank` come straight
+ * out of materializeSearchResult(); no metadata is re-extracted or reformatted here.
  */
-export async function buildGenericFindImageResult(
+function findImageResultInputs(
   totalFound: number,
-  materialized: { queryId: string; ranks: number[]; pictureNumbersByRank: Map<number, number> },
-  scratchpadPath: string,
+  materialized: FindImageMaterialized,
   images: SearchImage[],
-  mentionDisplayMethod = true,
-): Promise<{ content: unknown[] }> {
+): { results: MaterializedResult[]; summaryText: string } {
   const results: MaterializedResult[] = materialized.ranks.map((rank) => {
     const pictureNumber = materialized.pictureNumbersByRank.get(rank);
     if (!pictureNumber) throw new Error(`Search result rank ${rank} has no picture number.`);
@@ -147,7 +143,38 @@ export async function buildGenericFindImageResult(
     };
   });
   const summaryText = JSON.stringify({ totalFound, queryId: materialized.queryId, images }, null, 2);
-  return buildGenericResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)], mentionDisplayMethod);
+  return { results, summaryText };
+}
+
+/**
+ * Generic-preset result content (no HTML report — see presets/generic.ts's
+ * buildGenericResultContent()). Generic preset ONLY — unsloth has its own, independent
+ * buildUnslothFindImageResult() below (see made-for-preset-rollout-plan.md).
+ */
+export async function buildGenericFindImageResult(
+  totalFound: number,
+  materialized: FindImageMaterialized,
+  scratchpadPath: string,
+  images: SearchImage[],
+): Promise<{ content: unknown[] }> {
+  const { results, summaryText } = findImageResultInputs(totalFound, materialized, images);
+  return buildGenericResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)]);
+}
+
+/**
+ * Unsloth-preset result content — made-for-bionic-core's own, independent builder (see
+ * unsloth.ts's buildUnslothResultContent()), not a mode of buildGenericResultContent(). Unsloth
+ * already displays base64 image content and attachments automatically, so this omits the
+ * "show this to the user" sentence that buildGenericResultContent() always includes.
+ */
+export async function buildUnslothFindImageResult(
+  totalFound: number,
+  materialized: FindImageMaterialized,
+  scratchpadPath: string,
+  images: SearchImage[],
+): Promise<{ content: unknown[] }> {
+  const { results, summaryText } = findImageResultInputs(totalFound, materialized, images);
+  return buildUnslothResultContent("find_image", "final", scratchpadPath, results, summaryText, (result) => [originalLinkFor(result.absolutePath, result.notation)]);
 }
 
 function originalLinkFor(sourceUrl: string, notation: string): string {

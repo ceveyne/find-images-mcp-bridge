@@ -7,7 +7,7 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { buildGenericFindImageResult, materializeSearchResult, resolveRemoteTarget } from "./bridgeService.js";
+import { buildGenericFindImageResult, buildUnslothFindImageResult, materializeSearchResult, resolveRemoteTarget } from "./bridgeService.js";
 import type { RemoteIndexerClient } from "./remoteIndexerClient.js";
 import { readMediaState, resolveScratchpadFolder, writeMediaState } from "./scratchpad.js";
 
@@ -295,7 +295,7 @@ test("buildGenericFindImageResult embeds a base64 preview, an original link, and
   }
 });
 
-test("buildGenericFindImageResult omits the display-method sentence when mentionDisplayMethod is false (unsloth)", async () => {
+test("buildUnslothFindImageResult omits the display-method sentence (unsloth already auto-displays)", async () => {
   const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "find-images-bridge-"));
   try {
     const scratchpadPath = path.join(baseDirectory, "8x");
@@ -310,7 +310,7 @@ test("buildGenericFindImageResult omits the display-method sentence when mention
     }];
     const materialized = await materializeSearchResult({ totalFound: 1, images }, scratchpadPath, indexer, { writeReport: false });
 
-    const result = await buildGenericFindImageResult(1, materialized, scratchpadPath, images, false);
+    const result = await buildUnslothFindImageResult(1, materialized, scratchpadPath, images);
     const textContents = result.content.filter((item): item is { type: string; text: string } => (item as { type?: unknown }).type === "text").map((item) => item.text);
     assert.ok(!textContents.some((text) => text.includes("Use an appopriate method to show")));
   } finally {
