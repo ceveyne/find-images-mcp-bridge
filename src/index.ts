@@ -5,6 +5,7 @@ import { readBridgeConfig, type BridgeConfig } from "./config.js";
 import { bridgeToolErrorResult, startStdioMcpServer, type McpResultPreset } from "./core-bundle.mjs";
 import { RemoteIndexerClient } from "./remoteIndexerClient.js";
 import { resolveEffectiveScratchpadPath, ScratchpadFolderError } from "./scratchpad.js";
+import { checkSkillStatus, createSkillNoticeProvider } from "./skillStatus.js";
 import { assertNoAttachmentNotation, collectAttachmentTokens } from "./sourceNotation.js";
 
 const SCRATCHPAD_FOLDER_DESCRIPTION_OPTIONAL = "Optional scratchpad session folder name, one level under CHAT_WORKING_DIRECTORIES. Omit to write directly into CHAT_WORKING_DIRECTORIES.";
@@ -30,6 +31,25 @@ function scratchpadFolderDescription(preset: McpResultPreset): string {
 function targetDescription(preset: McpResultPreset, base: string): string {
 	if (preset.name !== "unsloth") return base;
 	return `${base} Also accepts aN (attachment, e.g. a1). Pass the literal "aN" (or any unregistered number) to get back a list of all attachments currently available in this thread instead of running the tool.`;
+}
+
+/**
+ * useSkills=true: a one-liner routing to the installed 'find-images' skill; full parameter
+ * semantics then live in skills/find-images/tools/<tool>.md. useSkills=false (e.g. no skill
+ * installed for this client) restores the original, fully inline description.
+ */
+function findImageDescription(useSkills: boolean): string {
+	if (useSkills) return "Find visually similar and metadata-related images. Before calling: read skill 'find-images' (SKILL.md for an overview, tools/find_image.md for parameter details).";
+	return "Find visually similar and metadata-related images.\nUse this tool for cross-modal retrieval over images from several sources across the local network.";
+}
+
+function tagImageDescription(useSkills: boolean): string {
+	if (useSkills) return "Manage persistent tags for indexed images. Before calling: read skill 'find-images' (SKILL.md for an overview, tools/tag_image.md for parameter details and examples).";
+	return `Manage persistent tags for indexed images through the configured image server.
+
+Examples:
+- { "action": "add_tag", "target": "p1", "tags": ["favorite"] }
+- { "action": "remove_tag", "target": ["p1", "v2", "/absolute/path/image.png"], "tags": ["favorite", "reviewed"] }`;
 }
 
 function findImageSchema(preset: McpResultPreset) {
@@ -77,6 +97,7 @@ async function main(): Promise<void> {
 		chatWorkingDirectories: config.chatWorkingDirectories,
 		preset: config.preset.name,
 		hasCaCertificate: Boolean(config.indexerCaCertificatePath),
+		useSkills: config.useSkills,
 		nodeExecutable: process.execPath,
 		nodeVersion: process.version,
 		workingDirectory: process.cwd(),
@@ -84,12 +105,30 @@ async function main(): Promise<void> {
 		path: process.env.PATH,
 	});
 
+	// Computed once per server run (one run ~= one client session) rather than per tool call — see
+	// tool-description-skill-concept.md's "USE_SKILLS-Gate" section for why this must never be
+	// mentioned unconditionally inside SKILL.md itself. 'image-display' is checked the same way as
+	// 'find-images' itself — a passive "## Related skills" mention in SKILL.md isn't a reliable
+	// enough link, since nothing forces an agent to read that section before displaying a result.
+	const skillStatus = checkSkillStatus(config.preset, config.useSkills, "find-images");
+	const imageDisplaySkillStatus = checkSkillStatus(config.preset, config.useSkills, "image-display");
+	await logBridgeEvent("skill-status", { skill: "find-images", ...skillStatus });
+	await logBridgeEvent("skill-status", { skill: "image-display", ...imageDisplaySkillStatus });
+	const getSkillNotice = createSkillNoticeProvider(skillStatus, "find-images");
+	const getImageDisplaySkillNotice = createSkillNoticeProvider(imageDisplaySkillStatus, "image-display");
+
+	function withSkillNotice(result: any): any {
+		const notices = [getSkillNotice(), getImageDisplaySkillNotice()].filter((notice): notice is string => Boolean(notice));
+		if (notices.length === 0 || !result || !Array.isArray(result.content)) return result;
+		return { ...result, content: [...result.content, ...notices.map((text) => ({ type: "text", text }))] };
+	}
+
 	startStdioMcpServer({
 		name: "find-images-mcp-bridge",
 		version: "0.1.0",
 		onShutdown: () => indexer.stopStartedIndexer(),
 		buildServer: (server) => {
-			server.registerTool("find_image", { description: "Find visually similar and metadata-related images.\nUse this tool for cross-modal retrieval over images from several sources across the local network.", inputSchema: findImageSchema(config.preset) }, async (args) => {
+			server.registerTool("find_image", { description: findImageDescription(config.useSkills), inputSchema: findImageSchema(config.preset) }, async (args) => {
 			try {
 				const toolArgs = args as BridgeToolArgs;
 				const scratchpadPath = await resolveToolScratchpadFolder(config, toolArgs.scratchpadFolder);
@@ -105,34 +144,30 @@ async function main(): Promise<void> {
 				await appendImageServerResponse(result);
 				if (typeof result.error === "string") throw new Error(result.error);
 				const totalFound = typeof result.totalFound === "number" ? result.totalFound : Array.isArray(result.images) ? result.images.length : 0;
-				if (totalFound === 0) return { content: [{ type: "text", text: "The search returned 0 results." }] };
+				if (totalFound === 0) return withSkillNotice({ content: [{ type: "text", text: "The search returned 0 results." }] });
 				const isBionic = config.preset.name === "bionic";
 				const materialized = await materializeSearchResult(result, scratchpadPath, indexer, { writeReport: isBionic });
 				if (isBionic) {
 					if (!materialized.reportPath) throw new Error("Bionic preset requires an HTML report path.");
-					return {
+					return withSkillNotice({
 						content: [{ type: "text", text: findImageToolResult(totalFound, { queryId: materialized.queryId, ranks: materialized.ranks, reportPath: materialized.reportPath }) }],
 						structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
-					};
+					});
 				}
 				const images = Array.isArray(result.images) ? result.images.filter((image): image is SearchImage => !!image && typeof image === "object") : [];
 				const generic = config.preset.name === "unsloth"
 					? await buildUnslothFindImageResult(totalFound, materialized, scratchpadPath, images)
 					: await buildGenericFindImageResult(totalFound, materialized, scratchpadPath, images);
-				return {
+				return withSkillNotice({
 					...generic,
 					structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
-				} as any;
+				} as any);
 			} catch (error) {
 				return await bridgeToolErrorResult("find_image", error, logger, config.preset);
 			}
 		});
 
-			server.registerTool("tag_image", { description: `Manage persistent tags for indexed images through the configured image server.
-
-Examples:
-- { "action": "add_tag", "target": "p1", "tags": ["favorite"] }
-- { "action": "remove_tag", "target": ["p1", "v2", "/absolute/path/image.png"], "tags": ["favorite", "reviewed"] }`, inputSchema: tagImageSchema(config.preset) }, async (args) => {
+			server.registerTool("tag_image", { description: tagImageDescription(config.useSkills), inputSchema: tagImageSchema(config.preset) }, async (args) => {
 			try {
 				const toolArgs = args as BridgeToolArgs;
 				const scratchpadPath = await resolveToolScratchpadFolder(config, toolArgs.scratchpadFolder);
@@ -151,7 +186,7 @@ Examples:
 				}
 				const result = await indexer.callTool("tag_image", remoteArgs);
 				await appendImageServerResponse(result as SearchResult);
-				return { content: [{ type: "text", text: tagImageToolResult(result) }] };
+				return withSkillNotice({ content: [{ type: "text", text: tagImageToolResult(result) }] });
 			} catch (error) {
 				return await bridgeToolErrorResult("tag_image", error, logger, config.preset);
 			}

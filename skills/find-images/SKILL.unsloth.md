@@ -1,0 +1,39 @@
+---
+name: find-images
+description: Search and tag images through the Find Images.app server. Made for Unsloth Studio.
+---
+
+# Find Images
+
+One subfile per tool under `tools/`. File name = tool name + `.md`. Each file contains the full tool description and all parameter descriptions. Open only the file(s) for the tool(s) you are about to call in this session.
+
+This skill documents only the tools of the `find-images-mcp-bridge` bridge to **Find Images.app**. The separate image-pipeline plugins (`generate-image`, `process-image`, `analyse-image`, `find-image`) each ship their own skill with the same structure — if one of them is not installed, its tools simply don't appear in your tool list.
+
+## Tools
+
+| Tool         | File                                         | Search keywords                                                    |
+| ------------ | -------------------------------------------- | ------------------------------------------------------------------ |
+| `find_image` | [`tools/find_image.md`](tools/find_image.md) | search, cross-modal retrieval, metadata filter, target, similarity |
+| `tag_image`  | [`tools/tag_image.md`](tools/tag_image.md)   | list_tags, show_tag, add_tag, remove_tag, remove_all_tags          |
+
+## Usage Guide
+
+Agent-facing guidance for forming effective tool calls — not end-user app documentation (a
+separate user-docs tool covers the **Find Images.app** interface itself).
+
+| Topic     | File                                               | Covers                                                                                              |
+| --------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Searching | [`searching/searching.md`](searching/searching.md) | query/target construction, structured filters, includeMetadata/excludeImage, goal → parameter table |
+| Tagging   | [`tagging/tagging.md`](tagging/tagging.md)         | tag_image actions, tag persistence, filtering find_image by Tags:                                   |
+
+## Chat working directory
+
+`scratchpadFolder` is required. Run `cat .unsloth_sandbox` first and pass its output unchanged as `scratchpadFolder`.
+
+## Attachment references
+
+Attachments the user added to the chat can be referenced directly by their `aN` handle (e.g. `a1`) — the same notation used for generated images (`iN`) and pictures (`pN`). A filename in the scratchpad folder or an absolute path also works. Pass the literal `aN` (or any unregistered number) as `target` to get back a list of all attachments currently available in this thread instead of running the tool.
+
+## Related skills
+
+`image-display` (installed alongside this skill) explains how to verify whether a search result image is actually visible to you and to the user on this client.

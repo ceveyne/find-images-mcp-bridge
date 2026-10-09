@@ -37,6 +37,8 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 - `FIND_IMAGES_MCP_INDEXER_URL`: base URL of the image server. Default `https://127.0.0.1:9760/mcp`.
 - `FIND_IMAGES_MCP_INDEXER_CA_CERT`: optional path to the image server's self-signed CA/server certificate; standard certificate validation remains active without this value. Default `~/.find-images/server/server.crt`, when that file exists. Example: `/Users/ceveyne/.find-images/server/server.crt`
 
+- `USE_SKILLS`: default `true`. When `true`, the `find_image`/`tag_image` tool descriptions are minimized and point at the installed skill `find-images` (see [skills/find-images](skills/find-images)) for the full parameter documentation. Set to `false` to restore the original, fully inline tool descriptions instead — no skill installation needed in that case. Install the skill in Bionic via `Skills > Install a skill > Select a folder`, pointing at this repo's `skills/find-images` folder. If the skill isn't installed yet (or the installed copy is outdated), the server detects this itself and adds a one-time note to the first tool result, naming the matching install script under `skills/find-images/install/`.
+
 ```json
 {
   "name": "find-images",
@@ -51,7 +53,8 @@ For **LM Studio Bionic**. The stdio definition requires these values:
       "CHAT_WORKING_DIRECTORIES": "/absolute/path/to/bionic-scratchpads",
       "FIND_IMAGES_MCP_INDEXER_URL": "https://find-images-server.example.com/mcp",
       "FIND_IMAGES_MCP_INDEXER_TOKEN": "<bearer-token>",
-      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt"
+      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt",
+      "USE_SKILLS": "true"
     }
   }
 }
@@ -66,6 +69,7 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 | `FIND_IMAGES_MCP_INDEXER_URL`     | `https://127.0.0.1:9760/mcp`                    | No       |
 | `FIND_IMAGES_MCP_INDEXER_TOKEN`   | –                                               | Yes      |
 | `FIND_IMAGES_MCP_INDEXER_CA_CERT` | `~/.find-images/server/server.crt` (if present) | No       |
+| `USE_SKILLS`                      | `true`                                          | No       |
 
 ## Setup for LM Studio Bionic step by step
 
@@ -102,6 +106,16 @@ For **Unsloth Studio**. Its agent obtains the session identifier via `cat .unslo
 - `FIND_IMAGES_MCP_INDEXER_URL`: base URL of the image server. Default `https://127.0.0.1:9760/mcp`.
 - `FIND_IMAGES_MCP_INDEXER_CA_CERT`: optional path to the image server's self-signed CA/server certificate; standard certificate validation remains active without this value. Default `~/.find-images/server/server.crt`, when that file exists. Example: `/Users/ceveyne/.find-images/server/server.crt`
 
+- `USE_SKILLS`: default `true`. When `true`, the `find_image`/`tag_image` tool descriptions are minimized and point at the installed skill `find-images` for the full parameter documentation. Unsloth Studio can't import a skill from a folder — it only creates/edits/deletes skills in its own UI, saved under `~/.agents/skills` — so the skill must be copied there first:
+
+  ```bash
+  bash skills/find-images/install/install_unsloth_skills.sh
+  ```
+
+  Windows: `skills/find-images/install/install_unsloth_skills.ps1` (unverified on Windows).
+
+  Installs `~/.agents/skills/find-images/SKILL.md` (the Unsloth variant) plus its `tools/` folder. The skill is usable immediately, no Unsloth restart needed. Re-run after updating this repo. Set `USE_SKILLS=false` instead if you'd rather skip the skill install and keep the original, fully inline tool descriptions.
+
 ```json
 {
   "name": "find-images",
@@ -116,7 +130,8 @@ For **Unsloth Studio**. Its agent obtains the session identifier via `cat .unslo
       "CLIENT_DB_LOCATION": "/absolute/path/to/.unsloth/studio/studio.db",
       "FIND_IMAGES_MCP_INDEXER_URL": "https://find-images-server.example.com/mcp",
       "FIND_IMAGES_MCP_INDEXER_TOKEN": "<bearer-token>",
-      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt"
+      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt",
+      "USE_SKILLS": "true"
     }
   }
 }
@@ -132,6 +147,7 @@ For **Unsloth Studio**. Its agent obtains the session identifier via `cat .unslo
 | `FIND_IMAGES_MCP_INDEXER_URL`     | `https://127.0.0.1:9760/mcp`                    | No       |
 | `FIND_IMAGES_MCP_INDEXER_TOKEN`   | –                                               | Yes      |
 | `FIND_IMAGES_MCP_INDEXER_CA_CERT` | `~/.find-images/server/server.crt` (if present) | No       |
+| `USE_SKILLS`                      | `true`                                          | No       |
 
 ## Generic Configuration
 
@@ -144,6 +160,16 @@ For any other MCP client. The stdio definition requires these values:
 - `FIND_IMAGES_MCP_INDEXER_URL`: base URL of the image server. Default `https://127.0.0.1:9760/mcp`.
 - `FIND_IMAGES_MCP_INDEXER_TOKEN`: bearer token for the image server. Example: `b2f4b1e2-3g0w-4c8t-3b7q-6n2b5b7x1a9d`
 - `FIND_IMAGES_MCP_INDEXER_CA_CERT`: optional path to the image server's self-signed CA/server certificate; standard certificate validation remains active without this value. Default `~/.find-images/server/server.crt`, when that file exists. Example: `/Users/ceveyne/.find-images/server/server.crt`
+
+- `USE_SKILLS`: default `false`. It's unverified whether a given generic MCP client supports skills at all, or — if it does — whether it reads them from `~/.agents/skills` (the path used by both Unsloth Studio and VS Code Copilot, but not a confirmed universal convention). Only set this to `true` if that's confirmed for your client, after installing the skill:
+
+  ```bash
+  bash skills/find-images/install/install_generic_skills.sh
+  ```
+
+  Windows: `skills/find-images/install/install_generic_skills.ps1` (unverified on Windows).
+
+  Installs `~/.agents/skills/find-images/SKILL.md` (the generic variant) plus its `tools/` folder.
 
 ```json
 {
@@ -158,7 +184,8 @@ For any other MCP client. The stdio definition requires these values:
       "CHAT_WORKING_DIRECTORIES": "/absolute/path/to/scratchpads",
       "FIND_IMAGES_MCP_INDEXER_URL": "https://find-images-server.example.com/mcp",
       "FIND_IMAGES_MCP_INDEXER_TOKEN": "<bearer-token>",
-      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt"
+      "FIND_IMAGES_MCP_INDEXER_CA_CERT": "/absolute/path/to/server.crt",
+      "USE_SKILLS": "false"
     }
   }
 }
@@ -173,6 +200,7 @@ For any other MCP client. The stdio definition requires these values:
 | `FIND_IMAGES_MCP_INDEXER_URL`     | `https://127.0.0.1:9760/mcp`                    | No       |
 | `FIND_IMAGES_MCP_INDEXER_TOKEN`   | –                                               | Yes      |
 | `FIND_IMAGES_MCP_INDEXER_CA_CERT` | `~/.find-images/server/server.crt` (if present) | No       |
+| `USE_SKILLS`                      | `false`                                         | No       |
 
 ## Development
 

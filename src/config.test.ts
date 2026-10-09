@@ -12,6 +12,7 @@ const ENV_KEYS = [
   "FIND_IMAGES_MCP_INDEXER_TOKEN",
   "FIND_IMAGES_MCP_INDEXER_CA_CERT",
   "CLIENT_DB_LOCATION",
+  "USE_SKILLS",
 ] as const;
 
 function withEnv(overrides: Record<string, string | undefined>, run: () => void): void {
@@ -69,5 +70,26 @@ test("readBridgeConfig defaults CLIENT_DB_LOCATION to Unsloth Studio's own datab
   withEnv({}, () => {
     const config = readBridgeConfig();
     assert.equal(config.clientDbLocation, path.join(os.homedir(), ".unsloth", "studio", "studio.db"));
+  });
+});
+
+test("readBridgeConfig defaults USE_SKILLS to true for bionic and unsloth, false for generic", () => {
+  withEnv({}, () => {
+    assert.equal(readBridgeConfig().useSkills, true);
+  });
+  withEnv({ MCP_MADE_FOR: "unsloth" }, () => {
+    assert.equal(readBridgeConfig().useSkills, true);
+  });
+  withEnv({ MCP_MADE_FOR: "generic", CHAT_WORKING_DIRECTORIES: "/tmp" }, () => {
+    assert.equal(readBridgeConfig().useSkills, false);
+  });
+});
+
+test("readBridgeConfig lets USE_SKILLS override the per-preset default", () => {
+  withEnv({ USE_SKILLS: "false" }, () => {
+    assert.equal(readBridgeConfig().useSkills, false);
+  });
+  withEnv({ MCP_MADE_FOR: "generic", CHAT_WORKING_DIRECTORIES: "/tmp", USE_SKILLS: "true" }, () => {
+    assert.equal(readBridgeConfig().useSkills, true);
   });
 });

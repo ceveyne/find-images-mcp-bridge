@@ -12,6 +12,8 @@ export type BridgeConfig = {
   indexerCaCertificatePath?: string;
   /** Path to Unsloth Studio's local chat database (only read by the unsloth preset's beforeToolCall hook). */
   clientDbLocation: string;
+  /** Gates whether the find_image/tag_image tool descriptions point to the 'find-images' skill (short) or stay fully inline. */
+  useSkills: boolean;
 };
 
 function requiredSetting(name: string): string {
@@ -44,6 +46,22 @@ function defaultIndexerCaCertificatePath(): string | undefined {
   return existsSync(candidate) ? candidate : undefined;
 }
 
+/**
+ * Skill install state can't be verified by the server itself (it has no visibility into
+ * ~/.agents/skills or Bionic's installed-skills tracking), so this is a best-guess default, not a
+ * detection: bionic/unsloth are the two clients a skill install path currently exists for (Bionic's
+ * own "Install a skill" flow; skills/find-images/install/install_unsloth_skills.sh), generic
+ * defaults to false since it's unverified whether a given generic client supports skills at all.
+ */
+function defaultUseSkills(preset: McpResultPreset): boolean {
+  return preset.name !== "generic";
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  return /^(1|true|yes)$/i.test(value.trim());
+}
+
 export function readBridgeConfig(): BridgeConfig {
   const preset = resolveMadeForEnv(optionalEnv("MCP_MADE_FOR"), optionalEnv("MCP_MADE_FOR_BIONIC"));
   const chatWorkingDirectories = optionalEnv("CHAT_WORKING_DIRECTORIES") ?? defaultChatWorkingDirectories(preset);
@@ -52,5 +70,6 @@ export function readBridgeConfig(): BridgeConfig {
   const indexerToken = requiredSetting("FIND_IMAGES_MCP_INDEXER_TOKEN");
   const indexerCaCertificatePath = optionalEnv("FIND_IMAGES_MCP_INDEXER_CA_CERT") ?? defaultIndexerCaCertificatePath();
   const clientDbLocation = optionalEnv("CLIENT_DB_LOCATION") ?? path.join(os.homedir(), ".unsloth", "studio", "studio.db");
-  return { chatWorkingDirectories, preset, indexerUrl, indexerToken, indexerCaCertificatePath, clientDbLocation };
+  const useSkills = parseBoolean(optionalEnv("USE_SKILLS"), defaultUseSkills(preset));
+  return { chatWorkingDirectories, preset, indexerUrl, indexerToken, indexerCaCertificatePath, clientDbLocation, useSkills };
 }

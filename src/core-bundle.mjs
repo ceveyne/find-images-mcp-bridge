@@ -313,7 +313,7 @@ function buildMultiResultText(toolLabel, tier, reportPath, results) {
   const viewPayload = JSON.stringify({ paths: viewPaths, quality: "medium" }, null, 2);
   const openPayload = JSON.stringify({ opened: true, url: pathToFileURL(reportPath).href }, null, 2);
   const primaryNotation = results[0]?.notation ?? "";
-  return `${toolLabel} produced ${results.length} file(s): ${notations}. ${reportFileName} provides an overview. Immediately call "open_url_in_app_browser" with the JSON below. Do not call any other tool and do not write a user-facing response before this call completes.
+  return `Immediately call "open_url_in_app_browser" with the JSON below \u2014 before any other tool call and before any user-facing response. ${toolLabel} produced ${results.length} file(s): ${notations}; ${reportFileName} provides an overview.
 
 ${openPayload}
 
@@ -330,7 +330,7 @@ All metadata for the generated file(s) is available in ${reportFileName}.`;
 function buildSingleResultText(toolLabel, tier, result, summary) {
   const viewPayload = JSON.stringify({ paths: [result.absolutePath], quality: "medium" }, null, 2);
   const openPayload = JSON.stringify({ opened: true, url: pathToFileURL(result.absolutePath).href }, null, 2);
-  return `${toolLabel} produced 1 file: ${result.notation}. Immediately call "open_url_in_app_browser" with the JSON below to show the preview to the user. Do not call any other tool and do not write a user-facing response before this call completes.
+  return `Immediately call "open_url_in_app_browser" with the JSON below to show the preview to the user \u2014 before any other tool call and before any user-facing response. ${toolLabel} produced 1 file: ${result.notation}.
 
 ${openPayload}
 
