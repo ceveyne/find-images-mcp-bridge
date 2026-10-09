@@ -150,7 +150,7 @@ async function main(): Promise<void> {
 				if (isBionic) {
 					if (!materialized.reportPath) throw new Error("Bionic preset requires an HTML report path.");
 					return withSkillNotice({
-						content: [{ type: "text", text: findImageToolResult(totalFound, { queryId: materialized.queryId, ranks: materialized.ranks, reportPath: materialized.reportPath }) }],
+						content: [{ type: "text", text: findImageToolResult(totalFound, { queryId: materialized.queryId, ranks: materialized.ranks, reportPath: materialized.reportPath, pictureNumbersByRank: materialized.pictureNumbersByRank }) }],
 						structuredContent: { type: "find-images-bridge-result", queryId: materialized.queryId, ranks: materialized.ranks },
 					});
 				}

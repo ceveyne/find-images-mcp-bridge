@@ -108,15 +108,35 @@ export async function materializeSearchResult(
   return { queryId, ranks, reportPath, pictureNumbersByRank };
 }
 
-export function findImageToolResult(totalFound: number, materialized: { queryId: string; ranks: number[]; reportPath: string }): string {
+/**
+ * pN is a global, ever-incrementing counter (nextCounter(state, "p")) while `rank` (the join key
+ * against the images JSON metadata, the HTML report rows, and view_images' preview paths) restarts
+ * at 1 per query — the two never line up, in any preset. Both are equally load-bearing for the
+ * agent: `rank` to cross-reference the metadata/report/view_images it already has in front of it,
+ * `p` to address the result in a later find_image/tag_image call. Neither value is derivable from
+ * the other, so both are always spelled out side by side as labeled fields.
+ */
+function buildRankToPictureNumber(ranks: number[], pictureNumbersByRank: ReadonlyMap<number, number>): Array<{ rank: number; p: string }> {
+  return ranks.map((rank) => {
+    const pictureNumber = pictureNumbersByRank.get(rank);
+    if (!pictureNumber) throw new Error(`Search result rank ${rank} has no picture number.`);
+    return { rank, p: `p${pictureNumber}` };
+  });
+}
+
+export function findImageToolResult(
+  totalFound: number,
+  materialized: { queryId: string; ranks: number[]; reportPath: string; pictureNumbersByRank: ReadonlyMap<number, number> },
+): string {
   const scratchpadPath = path.dirname(materialized.reportPath);
   const previewPaths = materialized.ranks.map((rank) => path.join(scratchpadPath, `preview-${materialized.queryId}-${rank}.jpg`));
   const viewPayload = JSON.stringify({ paths: previewPaths, quality: "medium" }, null, 2);
+  const rankToPictureNumber = JSON.stringify(buildRankToPictureNumber(materialized.ranks, materialized.pictureNumbersByRank), null, 2);
   // The hard constraint leads (not "The search returned N results..." first) — real Bionic traces
   // (2026-10-09) showed the agent skipping straight to view_images and ignoring this instruction
   // when it was buried as the 3rd sentence. Leading with it is the strongest lever this text alone
   // has; not a guaranteed fix for LLM instruction-following, just the most prominent placement.
-  return `Immediately call "open_url_in_app_browser" with the JSON below — before any other tool call and before any user-facing response. The search returned ${totalFound} results; ${materialized.queryId}.html provides an overview.\n\n${JSON.stringify({ opened: true, url: pathToFileURL(materialized.reportPath).href }, null, 2)}\n\nAfter the HTML report is open, use "view_images" to inspect the best matches yourself. This tool does not display images to the user:\n\n${viewPayload}\n\nThen present the best results to the user in the chat. To show a selected image to the user, first call \`attach_file(path="${path.join(scratchpadPath, `preview-${materialized.queryId}-N.jpg`)}")\`, then write its Markdown link directly in the chat. Example: ![preview-${materialized.queryId}-N.jpg](bionic-attached://2eb90efa.jpg?w=1024&h=768). Refer to a result in a subsequent find_image or tag_image target as its displayed \`pN\` identifier.\n\nTo improve the search, refine the query text or provide any reference image.\n\nAll metadata for the found images is available in ${materialized.queryId}.html.`;
+  return `Immediately call "open_url_in_app_browser" with the JSON below — before any other tool call and before any user-facing response. The search returned ${totalFound} results; ${materialized.queryId}.html provides an overview.\n\n${JSON.stringify({ opened: true, url: pathToFileURL(materialized.reportPath).href }, null, 2)}\n\nAfter the HTML report is open, use "view_images" to inspect the best matches yourself. This tool does not display images to the user:\n\n${viewPayload}\n\nEach result's rank (used in the images metadata, the HTML report, and the view_images paths above) and its picture number (used to refer to that result in a later find_image or tag_image target) are both listed here — neither can be derived from the other:\n\n${rankToPictureNumber}\n\nThen present the best results to the user in the chat. To show a selected image to the user, first call \`attach_file(path="${path.join(scratchpadPath, `preview-${materialized.queryId}-<rank>.jpg`)}")\`, then write its Markdown link directly in the chat. Example: ![preview-${materialized.queryId}-1.jpg](bionic-attached://2eb90efa.jpg?w=1024&h=768).\n\nTo improve the search, refine the query text or provide any reference image.\n\nAll metadata for the found images is available in ${materialized.queryId}.html.`;
 }
 
 type FindImageMaterialized = { queryId: string; ranks: number[]; pictureNumbersByRank: Map<number, number> };
@@ -125,8 +145,10 @@ type FindImageMaterialized = { queryId: string; ranks: number[]; pictureNumbersB
  * Builds the shared `MaterializedResult[]`/`summaryText` pair consumed by both
  * `buildGenericFindImageResult()` and `buildUnslothFindImageResult()` below — base64 preview per
  * result (from the already-downloaded preview JPG), a per-result original-source link, and the
- * raw per-image search metadata forwarded verbatim. `images`/`pictureNumbersByRank` come straight
- * out of materializeSearchResult(); no metadata is re-extracted or reformatted here.
+ * raw per-image search metadata forwarded verbatim plus the same rank/p mapping bionic gets (see
+ * buildRankToPictureNumber() doc comment) — `images` itself is untouched, the mapping is a sibling
+ * field. `images`/`pictureNumbersByRank` come straight out of materializeSearchResult(); no
+ * metadata is re-extracted or reformatted here.
  */
 function findImageResultInputs(
   totalFound: number,
@@ -146,7 +168,11 @@ function findImageResultInputs(
       previewFilename: `preview-${materialized.queryId}-${rank}.jpg`,
     };
   });
-  const summaryText = JSON.stringify({ totalFound, queryId: materialized.queryId, images }, null, 2);
+  const summaryText = JSON.stringify(
+    { totalFound, queryId: materialized.queryId, images, rankToPictureNumber: buildRankToPictureNumber(materialized.ranks, materialized.pictureNumbersByRank) },
+    null,
+    2,
+  );
   return { results, summaryText };
 }
 
