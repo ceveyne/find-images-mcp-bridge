@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Installs/updates the 'find-images' skill for Unsloth Studio.
-#
-# Unsloth Studio only lets you create/edit/delete skills in its own UI, saved under
-# ~/.agents/skills — it has no "install from folder" import. This script copies the already
-# client-agnostic tools/<tool>.md files plus the Unsloth-specific SKILL.unsloth.md (renamed to the
-# only name Unsloth will load, SKILL.md) into that location instead.
-#
-# Safe to re-run after an update: this script always overwrites SKILL.md and the tools/ folder in
-# the target with the current content of this repo's skills/find-images/ folder.
 set -euo pipefail
 shopt -s nullglob
 
@@ -23,8 +14,6 @@ fi
 mkdir -p "$TARGET_DIR"
 cp "$SOURCE_DIR/SKILL.unsloth.md" "$TARGET_DIR/SKILL.md"
 
-# Only real subfolders (e.g. tools/) are copied — never the sibling SKILL.bionic.md/
-# SKILL.generic.md source files, or this script's own install/ folder.
 for entry in "$SOURCE_DIR"/*/; do
   name="$(basename "$entry")"
   [[ "$name" == "install" ]] && continue
@@ -34,7 +23,6 @@ done
 
 echo "Installed skill 'find-images' (Unsloth variant) to $TARGET_DIR"
 
-# Also install the shared 'image-display' skill (cross-plugin result-visibility guidance).
 SHARED_SOURCE_DIR="$SOURCE_DIR/../image-display"
 SHARED_TARGET_DIR="$HOME/.agents/skills/image-display"
 if [[ -f "$SHARED_SOURCE_DIR/SKILL.unsloth.md" ]]; then

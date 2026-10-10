@@ -1,21 +1,6 @@
 #!/usr/bin/env node
-/**
- * scripts/sync-core.mjs — Sync the pre-built core bundle + its type declarations into src/
- *
- * made-for-bionic-core has NO git remote (never pushed anywhere), so this bridge's own repo
- * must carry a fully self-contained, committed copy of everything it needs from it — a fresh
- * `git clone` + `npm install` of THIS repo alone must never require the sibling to exist.
- * This script is therefore a manual, explicit maintenance step (run + commit the result
- * whenever made-for-bionic-core changes) — it is deliberately NOT invoked by `npm run build`.
- *
- * Copies:
- *   made-for-bionic-core/dist/core-bundle.mjs → src/core-bundle.mjs   (runtime)
- *   made-for-bionic-core/dist/**\/*.d.ts       → src/core-types/**   (types, minus tests)
- *
- * Usage:
- *   node scripts/sync-core.mjs           # one-shot sync
- *   node scripts/sync-core.mjs --build   # rebuild core first, then sync
- */
+// Manual sync: copies made-for-bionic-core/dist/core-bundle.mjs → src/. Not run by `npm run build`.
+// Usage: node scripts/sync-core.mjs [--build]
 
 import fs from "node:fs";
 import path from "node:path";

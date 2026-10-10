@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * scripts/sync-shared-skills.mjs — Sync the cross-plugin 'image-display' skill from
- * made-for-bionic-core into skills/image-display.
- *
- * Canonical source: made-for-bionic-core/skills/image-display. Byte-identical copy, a plain
- * directory copy, no build step.
- *
- * Usage:
- *   node scripts/sync-shared-skills.mjs
- */
+// Copies made-for-bionic-core/skills/image-display → skills/image-display.
 
 import fs from "node:fs";
 import path from "node:path";

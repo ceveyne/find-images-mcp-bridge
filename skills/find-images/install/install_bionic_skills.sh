@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Installs/updates the 'find-images' skill for LM Studio Bionic by copying it directly to
-# ~/.lmstudio/skills, bypassing Bionic's "Skills > Install a skill > Select a folder" UI flow.
-#
-# Bionic "installs" a skill simply by having it present under ~/.lmstudio/skills — copying it
-# there directly works the same as using the UI flow, regardless of whether Bionic is running.
-# Bionic's installed-skills tracking does not appear to apply to skills placed here; however,
-# updating the files under this repo's skills/find-images folder afterward does NOT propagate
-# automatically — re-run this script to pick up changes.
 set -euo pipefail
 shopt -s nullglob
 
@@ -22,8 +14,6 @@ fi
 mkdir -p "$TARGET_DIR"
 cp "$SOURCE_DIR/SKILL.bionic.md" "$TARGET_DIR/SKILL.md"
 
-# Only real subfolders (e.g. tools/) are copied — never the sibling SKILL.unsloth.md/
-# SKILL.generic.md source files, or this script's own install/ folder.
 for entry in "$SOURCE_DIR"/*/; do
   name="$(basename "$entry")"
   [[ "$name" == "install" ]] && continue
@@ -33,7 +23,6 @@ done
 
 echo "Installed skill 'find-images' (Bionic variant) to $TARGET_DIR"
 
-# Also install the shared 'image-display' skill (cross-plugin result-visibility guidance).
 SHARED_SOURCE_DIR="$SOURCE_DIR/../image-display"
 SHARED_TARGET_DIR="$HOME/.lmstudio/skills/image-display"
 if [[ -f "$SHARED_SOURCE_DIR/SKILL.bionic.md" ]]; then
