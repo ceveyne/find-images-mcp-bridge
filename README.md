@@ -37,7 +37,7 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 - `FIND_IMAGES_MCP_INDEXER_URL`: base URL of the image server. Default `https://127.0.0.1:9760/mcp`.
 - `FIND_IMAGES_MCP_INDEXER_CA_CERT`: optional path to the image server's self-signed CA/server certificate; standard certificate validation remains active without this value. Default `~/.find-images/server/server.crt`, when that file exists. Example: `/Users/ceveyne/.find-images/server/server.crt`
 
-- `USE_SKILLS`: default `true`. When `true`, the `find_image`/`tag_image` tool descriptions are minimized and point at the installed skill `find-images` (see [skills/find-images](skills/find-images)) for the full parameter documentation. Set to `false` to restore the original, fully inline tool descriptions instead — no skill installation needed in that case. Install the skill in Bionic via `Skills > Install a skill > Select a folder`, pointing at this repo's `skills/find-images` folder. If the skill isn't installed yet (or the installed copy is outdated), the server detects this itself and adds a one-time note to the first tool result, naming the matching install script under `skills/find-images/install/`.
+- `USE_SKILLS`: default `true`. When `true`, the `find_image`/`tag_image` tool descriptions are minimized and point at the installed skill `find-images` (see [skills/find-images](skills/find-images)) for the full parameter documentation. Set to `false` to restore the original, fully inline tool descriptions instead — no skill installation needed in that case. Install the skill in Bionic via `Skills > Install a skill > Select a folder`, pointing at this repo's `skills/find-images` folder. If the skill isn't installed yet (or the installed copy is outdated), the server copies the current version from this repo's own `skills/find-images` folder automatically — see "Skill delivery" below.
 
 ```json
 {
@@ -201,6 +201,12 @@ For any other MCP client. The stdio definition requires these values:
 | `FIND_IMAGES_MCP_INDEXER_TOKEN`   | –                                               | Yes      |
 | `FIND_IMAGES_MCP_INDEXER_CA_CERT` | `~/.find-images/server/server.crt` (if present) | No       |
 | `USE_SKILLS`                      | `false`                                         | No       |
+
+## Skill delivery
+
+Unlike `generate-image`/`process-image`/`analyse-image` (distributed via the LM Studio Hub's file-count-limited artifact), this repo is installed via plain `git clone`/`git pull` (see "Installation" above) — the canonical skill content under [skills/find-images](skills/find-images) is therefore always already present on disk, no Hub quota applies, and nothing needs to be fetched over the network.
+
+Instead, the MCP server copies the skill's files directly from that local folder the first time it detects (via `USE_SKILLS`) that the client-installed copy (`~/.lmstudio/skills/find-images` for Bionic, `~/.agents/skills/find-images` for Unsloth/generic) is missing or outdated — the exact same copy the `install_*_skills.sh`/`.ps1` scripts under `skills/find-images/install/` perform manually. The shared `image-display` skill (synced in locally from `made-for-bionic-core`, see `scripts/sync-shared-skills.mjs`) is kept current the same way. This runs automatically on every MCP session start — no manual re-install needed after a `git pull`. If the local canonical copy is somehow missing, the server falls back to a one-time note on the first tool result instead, naming the matching install script.
 
 ## Development
 

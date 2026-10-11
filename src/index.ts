@@ -6,6 +6,7 @@ import { bridgeToolErrorResult, startStdioMcpServer, type McpResultPreset } from
 import { RemoteIndexerClient } from "./remoteIndexerClient.js";
 import { resolveEffectiveScratchpadPath, ScratchpadFolderError } from "./scratchpad.js";
 import { checkSkillStatus, createSkillNoticeProvider } from "./skillStatus.js";
+import { syncSkillLocally } from "./skillSyncLocal.js";
 import { assertNoAttachmentNotation, collectAttachmentTokens } from "./sourceNotation.js";
 
 const SCRATCHPAD_FOLDER_DESCRIPTION_OPTIONAL = "Optional scratchpad session folder name, one level under CHAT_WORKING_DIRECTORIES. Omit to write directly into CHAT_WORKING_DIRECTORIES.";
@@ -114,8 +115,26 @@ async function main(): Promise<void> {
 	const imageDisplaySkillStatus = checkSkillStatus(config.preset, config.useSkills, "image-display");
 	await logBridgeEvent("skill-status", { skill: "find-images", ...skillStatus });
 	await logBridgeEvent("skill-status", { skill: "image-display", ...imageDisplaySkillStatus });
-	const getSkillNotice = createSkillNoticeProvider(skillStatus, "find-images");
-	const getImageDisplaySkillNotice = createSkillNoticeProvider(imageDisplaySkillStatus, "image-display");
+
+	// Self-heal from this repo's own local canonical copy instead of only nagging the agent to
+	// re-run an install script — on success, downgrade the effective status to "current" so no
+	// notice fires. No network involved: this repo ships via git clone/pull, so the canonical
+	// skill content is always already on disk.
+	let effectiveSkillStatus: typeof skillStatus = skillStatus;
+	if (skillStatus.state === "not-installed" || skillStatus.state === "stale") {
+		const syncResult = await syncSkillLocally("find-images", config.preset, skillStatus);
+		await logBridgeEvent("skill-sync", { skill: "find-images", result: syncResult });
+		if (syncResult === "synced") effectiveSkillStatus = { state: "current" };
+	}
+	let effectiveImageDisplaySkillStatus: typeof imageDisplaySkillStatus = imageDisplaySkillStatus;
+	if (imageDisplaySkillStatus.state === "not-installed" || imageDisplaySkillStatus.state === "stale") {
+		const syncResult = await syncSkillLocally("image-display", config.preset, imageDisplaySkillStatus);
+		await logBridgeEvent("skill-sync", { skill: "image-display", result: syncResult });
+		if (syncResult === "synced") effectiveImageDisplaySkillStatus = { state: "current" };
+	}
+
+	const getSkillNotice = createSkillNoticeProvider(effectiveSkillStatus, "find-images");
+	const getImageDisplaySkillNotice = createSkillNoticeProvider(effectiveImageDisplaySkillStatus, "image-display");
 
 	function withSkillNotice(result: any): any {
 		const notices = [getSkillNotice(), getImageDisplaySkillNotice()].filter((notice): notice is string => Boolean(notice));
