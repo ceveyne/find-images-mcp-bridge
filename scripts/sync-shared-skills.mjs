@@ -11,10 +11,13 @@ const SOURCE      = path.join(CORE_ROOT, "skills", "image-display");
 const TARGET      = path.join(PROJECT, "skills", "image-display");
 
 function log(msg) { console.log(`[sync-shared-skills] ${msg}`); }
-function die(msg) { console.error(`[sync-shared-skills] FATAL: ${msg}`); process.exit(1); }
 
+// skills/image-display is committed to this repo, so a plain `git clone` already has a working
+// copy — made-for-bionic-core is only a maintainer-side sibling for refreshing it. Skip (not
+// fail) the build when it's absent, so a regular end-user clone+build never breaks on this.
 if (!fs.existsSync(SOURCE)) {
-  die(`${SOURCE} not found. Is made-for-bionic-core set up?`);
+  log(`${SOURCE} not found (made-for-bionic-core not set up) — keeping the already-committed skills/image-display as-is.`);
+  process.exit(0);
 }
 
 fs.rmSync(TARGET, { recursive: true, force: true });
