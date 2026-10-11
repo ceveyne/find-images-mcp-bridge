@@ -107,6 +107,8 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 
 For LM Studio, use the [LM Studio plugin: **find-image**](https://lmstudio.ai/ceveyne/find-image).
 To generate images, use the [LM Studio plugin – made for Bionic: **generate-image**](https://lmstudio.ai/ceveyne/generate-image).
+To analyse images, use the [LM Studio plugin – made for Bionic: **analyse-image**](https://lmstudio.ai/ceveyne/analyse-image).
+For precise, mask-based editing tasks, use the [LM Studio plugin – made for Bionic: **process-image**](https://lmstudio.ai/ceveyne/process-image).
 
 ## Unsloth Configuration
 
