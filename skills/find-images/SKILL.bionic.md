@@ -36,4 +36,4 @@ Attachments the user added to the chat are referenced by their filename (basenam
 
 ## Related skills
 
-`image-display` (installed alongside this skill) explains how to verify whether a search result image is actually visible to you and to the user on this client.
+**Required reading before presenting any result:** `image-display` (installed alongside this skill) is the backbone for every image/video workflow on this client — it explains how to verify whether a search result image is actually visible to you and to the user, which is not automatic and not the same thing.

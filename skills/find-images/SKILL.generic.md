@@ -36,4 +36,4 @@ Attachments are referenced by their filename (basename) or an absolute path. Thi
 
 ## Related skills
 
-`image-display` (installed alongside this skill, if your client supports skills) explains how to verify whether a search result image is actually visible to you and to the user on this client.
+**Required reading before presenting any result:** `image-display` (installed alongside this skill, if your client supports skills) is the backbone for every image/video workflow on this client — it explains how to verify whether a search result image is actually visible to you and to the user, which is not automatic and not the same thing.

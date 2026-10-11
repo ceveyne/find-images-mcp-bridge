@@ -1,18 +1,20 @@
 ---
 name: image-display
-description: Understand whether an image/video result from generate-image, process-image, analyse-image, or find-image is actually visible to you and to the user. Made for Unsloth Studio.
+description: Required reading before presenting any image/video result from generate-image, process-image, analyse-image, or find-image — the backbone for verifying whether it's actually visible to you and to the user. Made for Unsloth Studio.
 ---
 
 # Result display
 
 Shared across the image-pipeline plugins (`generate-image`, `process-image`, `analyse-image`,
 `find-image`). Whichever of those are installed, every tool result they return is subject to this
-skill — read it once per session, not per tool call.
+skill — this is required reading, not an optional nice-to-have, and it is the backbone for every
+image/video workflow on this client. Read it once per session, not per tool call.
 
 ## Core principle
 
-Agent-visible ≠ user-visible. After any tool call that produces or returns an image/video, verify
-separately whether (a) you can see the result, and (b) the user can see it. Never assume one
+**This is the backbone for every image/video workflow:** agent-visible ≠ user-visible. After any
+tool call that produces or returns an image/video, verify separately whether (a) you can see the
+result, and (b) the user can see it. Never assume one
 implies the other.
 
 ## Unsloth Studio

@@ -103,7 +103,7 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 
 \* May or may not be gorgeous – depending on your settings.
 
-## Companion plugin
+## Companion plugins
 
 For LM Studio, use the [LM Studio plugin: **find-image**](https://lmstudio.ai/ceveyne/find-image).
 To generate images, use the [LM Studio plugin – made for Bionic: **generate-image**](https://lmstudio.ai/ceveyne/generate-image).
