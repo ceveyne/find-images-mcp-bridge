@@ -2,7 +2,15 @@
 
 Local stdio MCP bridge between an MCP client (LM Studio Bionic, Unsloth Studio, or another MCP client) and a **[Find Images.app](https://github.com/ceveyne/find-images-releases)** MCP server. Provides next-level image search and information retrieval based on multimodal embeddings.
 
+## What it does
+
 The bridge exposes `find_image` and `tag_image` tools. It forwards search and tag requests to the **Find Images** MCP server, downloads its previews, writes them to the specified scratchpad, and registers them for later editing or processing.
+
+![reality-check-workflow-example](docs/images/reality-check-workflow_03.jpeg)
+
+![reality-check-workflow-example](docs/images/reality-check-workflow_04.jpeg)
+
+![reality-check-workflow-example](docs/images/reality-check-workflow_05.jpeg)
 
 ## Prerequisites
 
@@ -24,11 +32,15 @@ This produces `dist/index.js`, the entrypoint referenced by `args` in every conf
 
 ## Bionic Configuration
 
+![bionic_conntected_mcp_servers](docs/images/bionic_conntected_mcp_servers.jpeg)
+
 For **LM Studio Bionic**. The stdio definition requires these values:
 
 - `command`: node
 - `args`: path to the find-images-mcp-bridge's `index.js`. Example: `/Users/ceveyne/.lmstudio/extensions/plugins/ceveyne/find-images-mcp-bridge/dist/index.js`
 - `FIND_IMAGES_MCP_INDEXER_TOKEN`: bearer token for the image server. Example: `b2f4b1e2-3g0w-4c8t-3b7q-6n2b5b7x1a9d`
+
+![bionic_find-images_mcp_servers](docs/images/bionic_find-images_mcp_servers.jpeg)
 
 > 💡 **Tip:** You don't need to set any of the following ENVs if you're happy with the defaults:
 
@@ -38,6 +50,12 @@ For **LM Studio Bionic**. The stdio definition requires these values:
 - `FIND_IMAGES_MCP_INDEXER_CA_CERT`: optional path to the image server's self-signed CA/server certificate; standard certificate validation remains active without this value. Default `~/.find-images/server/server.crt`, when that file exists. Example: `/Users/ceveyne/.find-images/server/server.crt`
 
 - `USE_SKILLS`: default `true`. When `true`, the `find_image`/`tag_image` tool descriptions are minimized and point at the installed skill `find-images` (see [skills/find-images](skills/find-images)) for the full parameter documentation. Set to `false` to restore the original, fully inline tool descriptions instead — no skill installation needed in that case. Install the skill in Bionic via `Skills > Install a skill > Select a folder`, pointing at this repo's `skills/find-images` folder. If the skill isn't installed yet (or the installed copy is outdated), the server copies the current version from this repo's own `skills/find-images` folder automatically — see "Skill delivery" below.
+
+  ![bionic_skills](docs/images/bionic_skills.jpeg)
+
+  > 💡 **Tip:** Bionic's **Settings → Skills → Use skills found in other apps** is on by default, which also surfaces everything under `~/.agents/skills` (shared with Unsloth Studio and VS Code Copilot) inside Bionic — including this plugin's own Unsloth-variant skill copy. Having both variants visible at once can confuse the agent about which one to read. Either disable that setting, or disable this specific skill entry under it, if you only intend to use Bionic.
+
+  ![bionic_use_skills_found_in_other_apps](docs/images/bionic_use_skills_found_in_other_apps.jpeg)
 
 ```json
 {
@@ -92,12 +110,18 @@ To generate images, use the [LM Studio plugin – made for Bionic: **generate-im
 
 ## Unsloth Configuration
 
+![unsloth_mcp](docs/images/unsloth_mcp.jpeg)
+
+![unsloth_manage_mcp_servers](docs/images/unsloth_manage_mcp_servers.jpeg)
+
 For **Unsloth Studio**. Its agent obtains the session identifier via `cat .unsloth_sandbox`, which doubles as both `scratchpadFolder` and the local chat thread id. The stdio definition requires these values:
 
 - `command`: node
 - `args`: path to the find-images-mcp-bridge's `index.js`. Example: `/Users/ceveyne/.lmstudio/extensions/plugins/ceveyne/find-images-mcp-bridge/dist/index.js`
 - `MCP_MADE_FOR`: `unsloth`.
 - `FIND_IMAGES_MCP_INDEXER_TOKEN`: bearer token for the image server. Example: `b2f4b1e2-3g0w-4c8t-3b7q-6n2b5b7x1a9d`
+
+![unsloth_find-images_mcp_servers](docs/images/unsloth_find-images_mcp_servers.jpeg)
 
 > 💡 **Tip:** You don't need to set any of the following ENVs if you're happy with the defaults:
 
@@ -115,6 +139,10 @@ For **Unsloth Studio**. Its agent obtains the session identifier via `cat .unslo
   Windows: `skills/find-images/install/install_unsloth_skills.ps1` (unverified on Windows).
 
   Installs `~/.agents/skills/find-images/SKILL.md` (the Unsloth variant) plus its `tools/` folder. The skill is usable immediately, no Unsloth restart needed. Re-run after updating this repo. Set `USE_SKILLS=false` instead if you'd rather skip the skill install and keep the original, fully inline tool descriptions.
+
+  ![unsloth_skills](docs/images/unsloth_skills.jpeg)
+
+  ![unsloth_manage_skills](docs/images/unsloth_manage_skills.jpeg)
 
 ```json
 {
